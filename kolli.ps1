@@ -209,23 +209,8 @@ function kolliInstall {
 	logSuccess "Installed '$kolliName' into '$target'"
 }
 
-function kolliFunc {
-	param( 
-		[parameter(mandatory=$true)]
-		[string]$command
-	)
-
-	$kolliErrors.Clear()
-	$stopwatch.Start()
-
-	switch -wildcard ($command) {
-		"ini*" { kolliInit }
-		"b*" { kolliBuild }
-		"ins*" { kolliInstall -kolliName $args[1] -source $args[2] }
-		default { 
-			logError "No such command '$command'"
-
-			write-host @"
+function usage {
+@"
 Usage:
 
     kolli command args
@@ -236,7 +221,29 @@ Commands:
     install Installs a package
     build   Builds the package defined by kolli.json
 
-"@
+"@ | out-host
+}
+
+$mainArgs = $args
+
+function kolliMain {
+	$kolliErrors.Clear()
+	$stopwatch.Start()
+
+	if( -not $mainArgs ) {
+		$mainArgs = $args
+	}
+
+	$command = $mainArgs[0]
+	switch -wildcard ($command) {
+		"ini*" { kolliInit }
+		"b*" { kolliBuild }
+		"ins*" { kolliInstall -kolliName $mainArgs[1] -source $mainArgs[2] }
+		default { 
+			if( $command ) {
+				logError "No such command '$command'"
+			}
+			usage
 		}
 	}
 
@@ -247,8 +254,10 @@ Commands:
 	}
 }
 
-set-alias kolli kolliFunc
-
-if( $args.Length -gt 0 ) {
-	kolli $args[0]
+if( $MyInvocation.CommandOrigin -eq "Runspace" ) {
+	kolliMain
+} else {
+	# kolli.ps1 was dot-sourced, overwirte kolli alias
+	Write-host "Type 'kolli' to begin"
+	set-alias kolli kolliMain
 }
