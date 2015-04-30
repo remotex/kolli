@@ -6,7 +6,7 @@ A minimalistic approach to put applications on servers (deployment) decent amoun
 
 ## Why?
 
-Because our needs are not fulfilled using any of the others. Kolli is very oppinionated, just like all the others, and created to solve a specific problem. The word "kolli" is Swedish for parcel or package and is used here to represent the word *parcelle* from Old French meaning *"a small piece or part."*
+Because our needs are not fulfilled using any of the others. Kolli is very opinionated, just like all the others, and created to solve a specific problem. The word "kolli" is Swedish for parcel or package and is used here to represent the word *parcelle* from Old French meaning *"a small piece or part."*
 
 ### A business scenario
 * A 500 mb zip archive representing the "vanilla" version of a product
