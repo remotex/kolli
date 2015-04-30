@@ -1,5 +1,5 @@
 # kolli package manager
-![collie is not kolli](http://www.pageresource.com/clipart/clipart/animals/dogs/specificbreeds/collie.png)
+![collie is not kolli](https://dl.dropboxusercontent.com/u/126999/kolli.png)
 ## What
 
 A minimalistic approach to put applications on servers (deployment) decent amount of borrowed features from NPM, bower, nuget and maybe Chocolatey as well. Think multi-part zip archives.
