@@ -1,0 +1,10 @@
+﻿{
+  "name": "htns",
+  "version": "1.0.0",
+  "files": [
+    "test.txt"
+  ],
+  "dependencies": {
+    "aoeu": "1.0.0"
+  }
+}
