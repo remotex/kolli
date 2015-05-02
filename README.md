@@ -40,6 +40,7 @@ Because our needs are not fulfilled using any of the others. Kolli is very opini
 * The manifest file also dictates the dependencies, that is, other kolli packages to install
 * Packages are installed into ```package-version``` and ```kolli prune``` only keeps the directory with the greatest version number
 * Services like FTP/HTTP servers must use the path to the current deployed version in their configuration. That means a web server should map an alias/vdir for URL */tenant* to *..../web-tenant-1.2.3.4/*, considering the kolli package name to be *web-tenant-1.2.3.4*
+* Commands uses the ```kolli.json``` file in the current directory, unless otherwise specified
 
 ### Example
 
@@ -75,21 +76,50 @@ Because our needs are not fulfilled using any of the others. Kolli is very opini
 * topping-4.5.6.7.json
 * topping-4.5.6.7.zip
 
-#### Installation command
+#### ```kolli init``` command
 
-Pre-condition: Empty directory<br/>
+Precondition: A directory that do not already contain a ```kolli.json``` file<br/>
+Usage: ```kolli init```<br/>
+Expected result:
+* Prompts for mandatory attributes of the ```kolli.json``` file
+* Creates ```kolli.json``` with data entered
+
+#### ```kolli install``` command
+
+Precondition: Empty directory<br/>
 Usage: ```kolli install topping```<br/>
 Expected result:
 * Directory ```./topping-4.5.6.7``` gets created
 * The  ```./topping-4.5.6.7``` directory contains the files ```iscream.exe iscream.exe.config vanilla.config topping.config```
 
-#### Prune command
+#### ```kolli add``` command
 
-Pre-condition: Directory containing sub-directory ```topping-1.0.0.0``` and package cache with ```topping-2.0.0.0```<br/>
+The command is used to add a dependency to the ```kolli.json``` file.
+
+Precondition: Current directory contains the ```kolli.json``` for the package "topping"<br/>
+Usage: ```kolli add vanilla```<br/>
+Expected result:
+* The current version of the vanilla package is discuvered in the package source
+* The ```vanilla``` package is added as a dependency to ```kolli.json```
+
+#### ```kolli prune``` command
+
+Precondition: Directory containing sub-directory ```topping-1.0.0.0``` and package cache with ```topping-2.0.0.0```<br/>
 Usage: ```kolli install topping && kolli prune topping```<br/>
 Expected result:
 * Directory ```./topping-2.0.0.0``` is created (by ```kolli install``` command)
 * Directory ```./topping-1.0.0.0``` is removed (by ```kolli prune``` command)
+
+#### ```kolli build``` command
+
+Builds the package defined by the ```kolli.json``` file. Output and manifest is stored in build directory.<br/>
+
+Precondition: Current directory contains the ```kolli.json``` for the package "topping", version 1.0.0<br/>
+
+Usage: ```kolli build .\build```
+Expected result:
+* The file .\build\topping-1.0.0.zip is created
+* The kolli.json file is copied to .\build\topping-1.0.0.json
 
 #### "Post-install scripts"
 

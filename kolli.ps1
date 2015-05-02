@@ -49,7 +49,7 @@ function expandZip {
 		$target = $pwd
 		)
 	Add-type -AssemblyName "System.IO.Compression.FileSystem"
-	$path = Resolve-Path $path | % Path
+	$path = Get-Item $path | % FullName
 
 	if( !(Test-Path $target)) {
 		mkdir $target | out-null
@@ -57,7 +57,7 @@ function expandZip {
 
 	$zip = [System.IO.Compression.ZipFile]::Open( $path, "Read" )
 	try {
-		$zip.Entries | % {
+		$zip.Entries | % {			
 			$entryPath = join-path $target $_.FullName
 			if( $_.Name -eq '' ) {
 				mkdir $entryPath -force | out-null
@@ -120,22 +120,49 @@ function logSuccess {
 	$args | out-host
 }
 
-function readKolli {
+filter checkFiles {
+	$_.GetAbsoluteFilePaths() | %{
+		if( -not ( Test-Path $_ ) ) {
+			logError "Missing file '$_'"
+		}
+	}
+	$_
+}
+
+function readJson {
 	param( [parameter(mandatory = $true)] $path )
 
 	$kolli = get-content $path | out-string | convertfrom-json
 
 	$dir = $path | Split-Path
 	$getAbsoluteFilePaths = [ScriptBlock]::Create("`$this.files | % { join-path ""$dir"" `$_ } ")
-	$kolli | add-member -membertype ScriptMethod -name GetAbsoluteFilePaths -value $getAbsoluteFilePaths
+	$kolli | add-member -passthru `
+		-membertype ScriptMethod `
+		-name GetAbsoluteFilePaths `
+		-value $getAbsoluteFilePaths 
+}
 
-	$kolli.GetAbsoluteFilePaths() | %{
-		if( !( Test-Path $_ )) {
-			logError "Missing file '$_'"
-		}
-	}
+function writeJson {
+	param(
+		[string] $path,
+		$kolliObject
+	)
+	$files = $kolliObject.files | % { """{0}""" -f $_ }
+	$dependencies = $kolliObject.dependencies | gm -membertype NoteProperty | % { """{0}"": ""{1}""" -f $_.Name, ( $kolliObject.dependencies | % $_.Name ) }
+	$json = @"
+{
+  "name": "$($kolliObject.name)",
+  "version": "$($kolliObject.version)",
+  "files": [
+    $( [string]::Join( ",`r`n    ", $files ) )
+  ],
+  "dependencies": {
+    $( [string]::Join( ",`r`n    ", $dependencies ) )
+  }
+}
+"@
 
-	$kolli
+	set-content -path $path -value $json -Encoding UTF8
 }
 
 function kolliInit {
@@ -144,27 +171,28 @@ function kolliInit {
 		return logError "A $kolliJson file does already exist in $PWD"
 	}
 
-	# String because there is no reasonable order of properties using ConvertTo-Json
-	$package = @"
-{
-  "name": "$(readInput 'Package name' -mandatory)",
-  "version": "$(readInput 'Version' -default '1.0.0')",
-  "files": [
-  ],
-  "dependencies": []
-}
-"@
+	writeJson $path (new-object psobject -property @{ `
+		"name" = (readInput 'Package name' -mandatory);
+		"version" == (readInput 'Version' -default '1.0.0')
+	})
 
-	set-content -Encoding UTF8 -path $path -value $package
 	logSuccess "Wrote $kolliJson"
-	readKolli $path | out-host
+	readJson $path | out-host
 	write-host ""
 }
 
 function kolliBuild {
+	param(
+		$buildDir = $buildDirName
+	)
+
+	if( -not [System.IO.Path]::IsPathRooted( $buildDir ) ) {
+		$buildDir = join-path $PWD $buildDir
+	}
+
 	$path = join-path $PWD $kolliJson
-	$kolli = readKolli $path
-	$buildDir = join-path $PWD $buildDirName
+	$kolli = readJson $path | checkFiles
+
 	if(!(Test-Path $buildDir)) {
 		mkdir $buildDir | out-null
 		logInfo "Created $buildDir"
@@ -185,6 +213,43 @@ function kolliBuild {
 function kolliInstall {
 	param(
 		[string] $kolliName,
+		[string] $source,
+		[string] $target
+	)
+
+	if( -not $kolliName ) {
+		return logError "Kolli name is required"
+	}
+	if( -not $source ) {
+		return logError "A source is required"
+	}
+	if( -not $target ) {
+		$target = join-path ( gi $PWD | % FullName ) $kolliName
+	}
+
+	$jsonPath = join-path $source "${kolliName}.json"
+	if(!(Test-Path $jsonPath)) {
+		return logError "Could not find kolli '$kolliName' at source '$source'"
+	}
+	$zipPath = $jsonPath -replace "\.json$", ".zip"
+	if(!(Test-Path $zipPath)) {
+		return logError "Could not find zip archive for kolli '$kolliName' at source '$source'"
+	}
+
+	$kolliJson = readJson $jsonPath
+	if( $kolliJson.dependencies ) {
+		$kolliJson.dependencies | gm -membertype NoteProperty | % {
+			$dependencyName = "{0}-{1}" -f $_.Name, ( $kolliJson.dependencies | % $_.Name )
+			kolliInstall -kolliName $dependencyName -source $source -target $target
+		}
+	}
+	expandZip $zipPath -target $target
+	logSuccess ("Installed '{0}' into '{1}'" -f $kolliName, $target)
+}
+
+function kolliAddDependency {
+	param(
+		[string] $kolliName,
 		[string] $source
 	)
 
@@ -199,14 +264,29 @@ function kolliInstall {
 	if(!(Test-Path $jsonPath)) {
 		return logError "Could not find kolli '$kolliName' at source '$source'"
 	}
-	$zipPath = join-path $source "${kolliName}.zip"
-	if(!(Test-Path $jsonPath)) {
-		return logError "Could not find zip archive for kolli '$kolliName' at source '$source'"
+
+	$localKolliPath = join-path $PWD $kolliJson
+	if( !( Test-Path $localKolliPath ) ) {
+		return logError "Could not find kolli.json. Call 'kolli init' to begin."
 	}
 
-	$target = join-path $PWD $kolliName
-	expandZip $zipPath -target $target
-	logSuccess "Installed '$kolliName' into '$target'"
+	$kolli = readJson $localKolliPath | checkFiles
+	$dependency = readJson $jsonPath
+
+	if( $kolli.name -eq $dependency.name -or ( $dependency.dependencies -and $dependency.dependencies | gm $kolli.name ) ) {
+		return logError ( "A circular dependency was detected: '{0}' => '{1}'" -f $dependency.name, $kolli.name )
+	}
+
+	if( -not $kolli.dependencies ) {
+		$kolli.dependencies = new-object psobject
+	}
+	if( $kolli.dependencies | gm $dependency.name ) {
+		$kolli.dependencies."$($dependency.name)" = $dependency.version
+	} else {
+		$kolli.dependencies | add-member -membertype NoteProperty -name $dependency.name -value $dependency.version
+	}
+	writeJson $localKolliPath $kolli
+	logSuccess ("Added '{0}' => '{1}'" -f $dependency.name, $dependency.version)
 }
 
 function usage {
@@ -218,7 +298,8 @@ Usage:
 Commands:
 
     init    Interactive initialization of kolli.json
-    install Installs a package
+    install Installs a package from a package source
+    add     Adds a dependency to kolli.json
     build   Builds the package defined by kolli.json
 
 "@ | out-host
@@ -237,8 +318,9 @@ function kolliMain {
 	$command = $mainArgs[0]
 	switch -wildcard ($command) {
 		"ini*" { kolliInit }
-		"b*" { kolliBuild }
+		"b*" { kolliBuild -buildDir $mainArgs[1] }
 		"ins*" { kolliInstall -kolliName $mainArgs[1] -source $mainArgs[2] }
+		"a*" { kolliAddDependency -kolliName $mainArgs[1] -source $mainArgs[2] }
 		default { 
 			if( $command ) {
 				logError "No such command '$command'"
