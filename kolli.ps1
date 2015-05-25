@@ -17,6 +17,7 @@ $showLogInfo = $env:DEBUG -match "kolli:(info|\*)"
 $stopwatch = new-object System.Diagnostics.Stopwatch
 $kolliJson = "kolli.json"
 $buildDirName = "build"
+$defaultPort = 8000
 
 function newZip {
 	param(
@@ -181,14 +182,30 @@ function kolliInit {
 	write-host ""
 }
 
+function getLocalOrGlobalDir {
+	param( [string] $dirOrGlobalFlag )
+
+	$dir = $buildDirName
+	if( $dirOrGlobalFlag -eq "-g" ) {
+		$dir = join-path $env:userprofile "kolli\build"
+	} elseif( $dirOrGlobalFlag ) {
+		$dir = $dirOrGlobalFlag
+	}
+	if( -not [System.IO.Path]::IsPathRooted( $dir ) ) {
+		$dir = join-path $PWD $dir
+	}
+	if( -not (test-path -pathtype container $dir ) ) {
+		mkdir $dir | out-null
+	}
+	Resolve-Path $dir
+}
+
 function kolliBuild {
 	param(
-		$buildDir = $buildDirName
+		$buildDir
 	)
 
-	if( -not [System.IO.Path]::IsPathRooted( $buildDir ) ) {
-		$buildDir = join-path $PWD $buildDir
-	}
+	$buildDir = getLocalOrGlobalDir $buildDir
 
 	$path = join-path $PWD $kolliJson
 	$kolli = readJson $path | checkFiles
@@ -289,6 +306,111 @@ function kolliAddDependency {
 	logSuccess ("Added '{0}' => '{1}'" -f $dependency.name, $dependency.version)
 }
 
+function kolliServe {
+	param(
+		[string] $source,
+		[string] $ipAddress,
+		[int] $port 
+	)
+	$source = getLocalOrGlobalDir $source
+	if( -not $ipAddress ) {
+		$ipAddress = "+"
+	}
+	if( -not $port ) {
+		$port = $defaultPort
+	}
+	if( -not (test-path $source -pathtype container) ) {
+		throw "Source is not an existing directory: $source"
+	} else {
+		$source = Resolve-Path $source
+	}
+	$httpListener = New-Object Net.HttpListener
+	$prefix = "http://{0}:{1}/" -f $ipAddress, $port
+	$httpListener.Prefixes.Add( $prefix )
+	try {
+		$httpListener.Start()
+		Write-Host "Server started listening to $prefix"
+		Write-Host "Serving files from directory $source"
+	} catch {
+		Write-Error "Failed to start server: $_"
+		return
+	}
+
+	$server = {
+		param( $webRoot, $httpListener, $StdOut, $StdErr )
+
+		While ($httpListener.IsListening) {
+			$httpContext = $null
+			try { 
+				$httpContext = $httpListener.GetContext()
+			} catch {
+				if( $_ -notmatch "The I/O operation has been aborted" ) {
+					$StdErr.WriteLine( "Error: $_" )
+				}
+				return
+			}
+			$req = $httpContext.Request
+			$res = $httpContext.Response
+			$localFilePath = Join-Path $webRoot $req.RawUrl
+
+			$length = 0
+			if( $req.HttpMethod -ne "GET" ) {
+				$res.StatusCode = 405 # Method Not Allowed
+			} elseif( test-path $localFilePath -pathtype leaf ) {
+				if( $localFilePath.EndsWith( ".zip" ) ) {
+					$res.Headers.Add("Content-Type","application/zip")
+				} elseif( $localFilePath.EndsWith( ".json" ) ) {
+					$res.Headers.Add("Content-Type","application/json; charset=UTF-8")
+				} else {
+					$res.StatusCode = 403 # Forbidden
+				}
+				if( $res.StatusCode -eq 200 ) {
+					$fileBytes = [System.IO.File]::ReadAllBytes( $localFilePath )
+					$length = $fileBytes.Length
+					$res.ContentLength64 = $length
+					$res.OutputStream.Write($fileBytes,0,$length)
+					$res.OutputStream.Flush()
+				}
+			} else {
+				$res.StatusCode = 404 # Not Found
+			}
+			$StdOut.WriteLine(("{0:yyyy-MM-dd} {0:HH:mm:ss} {1} {2} {3} {4}" -f (get-date), $req.HttpMethod, $req.RawUrl, $res.StatusCode, $length))
+			$res.Close()
+		}
+		try {
+			$httpListener.Stop()
+		} finally {
+			$StdOut.WriteLine( "Server was stopped" )
+		}
+	}
+
+	$pool = [RunspaceFactory]::CreateRunspacePool(1, 1)
+	$pool.ApartmentState = "STA"
+	$pool.Open()
+	$pipeline  = [System.Management.Automation.PowerShell]::create()
+	$pipeline.RunspacePool = $pool
+	$pipeline.AddScript($server).AddArgument($source).AddArgument($httpListener).AddArgument( [Console]::Out).AddArgument( [Console]::Error) | out-null
+
+	$AsyncHandle = $pipeline.BeginInvoke()
+	try {
+		Do {
+			Start-Sleep -Seconds 1
+		} While ( -not $AsyncHandle.IsCompleted )
+	} finally {
+		Write-Host "Stopping..."
+		try {
+			$httpListener.Stop()
+			$pipeline.EndInvoke($AsyncHandle)
+		} catch {
+			Write-Error "Error on stop: $_"
+		}
+	}
+	$pipeline.Dispose()
+	$pool.Close()
+
+	Write-Host ""
+}
+
 function usage {
 @"
 Usage:
@@ -301,6 +423,7 @@ Commands:
     install Installs a package from a package source
     add     Adds a dependency to kolli.json
     build   Builds the package defined by kolli.json
+    serve   Starts a development HTTP server that can be used as a package source
 
 "@ | out-host
 }
@@ -315,12 +438,14 @@ function kolliMain {
 		$mainArgs = $args
 	}
 
+
 	$command = $mainArgs[0]
 	switch -wildcard ($command) {
 		"ini*" { kolliInit }
 		"b*" { kolliBuild -buildDir $mainArgs[1] }
 		"ins*" { kolliInstall -kolliName $mainArgs[1] -source $mainArgs[2] }
 		"a*" { kolliAddDependency -kolliName $mainArgs[1] -source $mainArgs[2] }
+		"s*" { kolliServe -source $mainArgs[1] -ipAddress $mainArgs[2] -port $mainArgs[3] }
 		default { 
 			if( $command ) {
 				logError "No such command '$command'"
