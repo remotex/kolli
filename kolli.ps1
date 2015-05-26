@@ -48,7 +48,8 @@ function expandZip {
 		[parameter(mandatory=$true)]
 		$path,
 		$target = $pwd
-		)
+	)
+
 	Add-type -AssemblyName "System.IO.Compression.FileSystem"
 	$path = Get-Item $path | % FullName
 
@@ -211,6 +212,7 @@ function cleanupTempFiles {
 			logError "Failed to clean up cached file: $path"
 		}
 	}
+	$tempFilesToDelete.Clear()
 }
 
 function getLocalOrGlobalDir {
