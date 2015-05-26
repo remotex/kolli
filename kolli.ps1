@@ -230,7 +230,7 @@ function getLocalOrGlobalDir {
 	if( -not (test-path -pathtype container $dir ) ) {
 		mkdir $dir | out-null
 	}
-	$fullName = Resolve-Path $dir
+	$fullName = Resolve-Path $dir | Get-Item | % FullName
 
 	logInfo "Selecting path $fullName"
 
@@ -259,7 +259,9 @@ function kolliBuild {
 	cp $path $outputJson
 	logSuccess "Created $outputJson"
 
-	$kolli.GetAbsoluteFilePaths() | Get-Item | newZip -target $outputZip | out-null
+	$tempZipPath = [System.IO.Path]::GetTempFileName()
+	$kolli.GetAbsoluteFilePaths() | Get-Item | newZip -target $tempZipPath | out-null
+	mv $tempZipPath $outputZip -force
 	logSuccess "Created $outputZip"
 
 }
