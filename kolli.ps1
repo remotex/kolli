@@ -103,7 +103,7 @@ function logHeader {
 }
 
 function logError {
-	logHeader red "error"
+	logHeader red "error   "
 	$kolliErrors.Add( $args ) | out-null
 	$args | out-host
 }
@@ -112,7 +112,7 @@ function logInfo {
 	if( -not $showLogInfo ) { 
 		return 
 	}
-	logHeader gray "info"
+	logHeader yellow "info   "
 	$args | out-host
 }
 
@@ -182,12 +182,43 @@ function kolliInit {
 	write-host ""
 }
 
+$tempFilesToDelete = new-object System.Collections.ArrayList
+
+function getTempWebFile {
+	param( $source, $fileName )
+
+	$sourceCacheDirName = $source -replace "[:/]", "_"
+	$cacheDir = join-path $env:tmp "kolli\cache\$sourceCacheDirName"
+	if( -not (test-path $cacheDir ) ) {
+		mkdir $cacheDir | out-null
+	}
+
+	$tempFilePath = join-path $cacheDir $fileName
+	$tempFilesToDelete.Add( $tempFilePath ) | out-null
+
+	logInfo "Adding temp file path $tempFilePath"
+
+	$tempFilePath
+}
+
+function cleanupTempFiles {
+	$tempFilesToDelete | % {
+		$path = $_
+		try {
+			rm -force $path
+			logInfo "Removed $path"
+		} catch {
+			logError "Failed to clean up cached file: $path"
+		}
+	}
+}
+
 function getLocalOrGlobalDir {
 	param( [string] $dirOrGlobalFlag )
 
 	$dir = $buildDirName
 	if( $dirOrGlobalFlag -eq "-g" ) {
-		$dir = join-path $env:userprofile "kolli\build"
+		$dir = join-path $env:userprofile "kolli\$buildDirName"
 	} elseif( $dirOrGlobalFlag ) {
 		$dir = $dirOrGlobalFlag
 	}
@@ -197,7 +228,11 @@ function getLocalOrGlobalDir {
 	if( -not (test-path -pathtype container $dir ) ) {
 		mkdir $dir | out-null
 	}
-	Resolve-Path $dir
+	$fullName = Resolve-Path $dir
+
+	logInfo "Selecting path $fullName"
+
+	$fullName
 }
 
 function kolliBuild {
@@ -227,6 +262,46 @@ function kolliBuild {
 
 }
 
+function getKolliFromSource {
+	param( $kolliName, $source )
+
+	$json = {}
+	$jsonPath = $null
+	$zipPath = $null
+	$jsonFileName = "${kolliName}.json"
+	$zipFileName = "${kolliName}.zip"
+	if( $source.StartsWith( "http" ) ) {
+		$jsonUrl = (new-object System.Uri( $source, $jsonFileName, [System.UriKind]::Absolute )).AbsoluteUri
+		$zipUrl = (new-object System.Uri( $source, $zipFileName, [System.UriKind]::Absolute )).AbsoluteUri
+		$webclient = New-Object System.Net.WebClient
+		$zipPath = getTempWebFile $source $zipFileName
+		$jsonPath = getTempWebFile $source $jsonFileName
+		try {
+			logInfo "Downloading $jsonUrl"
+			$webclient.DownloadFile($jsonUrl, $jsonPath)
+		} catch {
+			logError "Failed to get '$kolliName' from source '$source' $_"
+		}
+		try {
+			logInfo "Downloading $zipUrl"
+			$webclient.DownloadFile($zipUrl, $zipPath)
+		} catch {
+			logError "Failed to get zip archive for kolli '$kolliName' from source '$source' $_"
+		}
+	} else {
+		$jsonPath = join-path $source $jsonFileName
+		if(!(Test-Path $jsonPath)) {
+			logError "Could not find kolli '$kolliName' at source '$source'"
+		}
+		$zipPath = join-path $source $zipFileName
+		if(!(Test-Path $zipPath)) {
+			logError "Could not find zip archive for kolli '$kolliName' at source '$source'"
+		}
+	}
+
+	new-object psobject -property @{ JsonPath = $jsonPath; ZipPath = $zipPath; Json = { readJson $jsonPath } }
+}
+
 function kolliInstall {
 	param(
 		[string] $kolliName,
@@ -244,23 +319,18 @@ function kolliInstall {
 		$target = join-path ( gi $PWD | % FullName ) $kolliName
 	}
 
-	$jsonPath = join-path $source "${kolliName}.json"
-	if(!(Test-Path $jsonPath)) {
-		return logError "Could not find kolli '$kolliName' at source '$source'"
+	$kolliSource = getKolliFromSource $kolliName $source
+	if( -not $kolliSource.ZipPath ) {
+		return
 	}
-	$zipPath = $jsonPath -replace "\.json$", ".zip"
-	if(!(Test-Path $zipPath)) {
-		return logError "Could not find zip archive for kolli '$kolliName' at source '$source'"
-	}
-
-	$kolliJson = readJson $jsonPath
+	$kolliJson = $kolliSource.Json
 	if( $kolliJson.dependencies ) {
 		$kolliJson.dependencies | gm -membertype NoteProperty | % {
 			$dependencyName = "{0}-{1}" -f $_.Name, ( $kolliJson.dependencies | % $_.Name )
 			kolliInstall -kolliName $dependencyName -source $source -target $target
 		}
 	}
-	expandZip $zipPath -target $target
+	expandZip $kolliSource.ZipPath -target $target
 	logSuccess ("Installed '{0}' into '{1}'" -f $kolliName, $target)
 }
 
@@ -453,6 +523,8 @@ function kolliMain {
 			usage
 		}
 	}
+
+	cleanupTempFiles
 
 	$stopwatch.Stop()
 
