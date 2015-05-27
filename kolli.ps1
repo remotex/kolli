@@ -212,7 +212,7 @@ function cleanupTempFiles {
 			logError "Failed to clean up cached file: $path"
 		}
 	}
-	$tempFilesToDelete.Clear()
+	$tempFilesToDelete.Clear()	
 }
 
 function getLocalOrGlobalDir {
