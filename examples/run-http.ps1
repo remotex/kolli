@@ -5,7 +5,7 @@ try {
     . ..\kolli.ps1
 
     Write-Host -foregroundcolor green "Cleaning old build and install dir"
-    rm -recurse .\build,.\install
+    ls | ?{ @( "build", "install" ) -contains $_.Name } | rm -recurse 
 
     function describeBlock {
         param( [scriptblock] $block )
