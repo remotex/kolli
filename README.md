@@ -130,8 +130,3 @@ More thought of something like the [cron](https://docs.puppetlabs.com/references
 ## Ambitions
 
 The ```kolli.json``` manifest file is not tied to any kind of operating system nor platform such as Ruby, Node, .Net etc. However, each implementation of Kolli is from our perspective should/could be targeted for use with a specific platform. That very specific scenario for our case is deploying pre-packaged .net applications (asp.net/iis app, console app, windows services) sourced from a build artifact repository requiring only a PowerShell session (possibly a WinRM session).
-
-
-
-
-
