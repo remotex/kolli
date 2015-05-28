@@ -1,3 +1,5 @@
+###### kolli [![Build Status](https://pf-hudson.remotex.net/buildStatus/icon?job=kolli)](https://pf-hudson.remotex.net/job/kolli)
+
 # kolli package manager
 ![collie is not kolli](https://dl.dropboxusercontent.com/u/126999/kolli.png)
 ## What
