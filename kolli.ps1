@@ -315,6 +315,7 @@ function getKolliFromSource {
 	$jsonFileName = "${kolliName}.json"
 	$zipFileName = "${kolliName}.zip"
 	if( $source.StartsWith( "http" ) ) {
+		$source = $source.TrimEnd("/") + "/"
 		$jsonUrl = (new-object System.Uri( $source, $jsonFileName, [System.UriKind]::Absolute )).AbsoluteUri
 		$zipUrl = (new-object System.Uri( $source, $zipFileName, [System.UriKind]::Absolute )).AbsoluteUri
 		$webclient = New-Object System.Net.WebClient
