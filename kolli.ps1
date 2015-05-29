@@ -174,6 +174,8 @@ function writeJson {
 "@
 
 	set-content -path $path -value $json -Encoding UTF8
+
+	logInfo ( "Wrote {0}" -f $path )
 }
 
 function kolliInit {
@@ -184,7 +186,7 @@ function kolliInit {
 
 	writeJson $path (new-object psobject -property @{ `
 		"name" = (readInput 'Package name' -mandatory);
-		"version" == (readInput 'Version' -default '1.0.0')
+		"version" = (readInput 'Version' -default '1.0.0')
 	})
 
 	logSuccess "Wrote $kolliJson"
@@ -275,6 +277,35 @@ function kolliBuild {
 
 }
 
+function kolliSet {
+	param( 
+		[string] $property,
+		$value
+	)
+
+	$path = join-path $PWD $kolliJson
+	$kolli = readJson $path
+
+	if( $property -eq "files" ) {
+		$files = $value | %{ ls -recurse ( join-path $PWD $_ ) | %{ $_.FullName.Replace( $PWD.Path + "\", "" ).Replace( "\", "/" ) } }
+		$files | %{
+			logInfo "File $_"
+		}
+		$kolli.files = $files
+		logInfo ("Total: {0}" -f ($kolli.files | measure).Count)
+		writeJson $path $kolli
+	} elseif( $property -eq "version" ) {
+		if( -not ( $value -match "(\d+\.)\d+(-[\w\-\d]+)?") ) {
+			return logError ("The value '{0}' does not seem to be a valid version number" -f $value )
+		}
+		$kolli.version = $value
+		logInfo ("Setting version to: {0}" -f $value)
+		writeJson $path $kolli
+	} else {
+		logError ( "Invalid option '{0}' to command 'kolli set'" -f $property )
+	}
+}
+
 function getKolliFromSource {
 	param( $kolliName, $source )
 
@@ -312,7 +343,7 @@ function getKolliFromSource {
 		}
 	}
 
-	new-object psobject -property @{ JsonPath = $jsonPath; ZipPath = $zipPath; Json = { readJson $jsonPath } }
+	new-object psobject -property @{ JsonPath = $jsonPath; ZipPath = $zipPath; Json = (readJson $jsonPath) }
 }
 
 function kolliInstall {
@@ -334,12 +365,14 @@ function kolliInstall {
 
 	$kolliSource = getKolliFromSource $kolliName $source
 	if( -not $kolliSource.ZipPath ) {
+		logError ("Could not find zip for '{0}' at source '{1}'" -f $kolliName, $source)
 		return
 	}
 	$kolliJson = $kolliSource.Json
 	if( $kolliJson.dependencies ) {
 		$kolliJson.dependencies | gm -membertype NoteProperty | % {
 			$dependencyName = "{0}-{1}" -f $_.Name, ( $kolliJson.dependencies | % $_.Name )
+			logInfo ("Detected dependency {0}" -f $dependencyName)
 			kolliInstall -kolliName $dependencyName -source $source -target $target
 		}
 	}
@@ -528,7 +561,8 @@ function kolliMain {
 		"b*" { kolliBuild -buildDir $mainArgs[1] }
 		"ins*" { kolliInstall -kolliName $mainArgs[1] -source $mainArgs[2] }
 		"a*" { kolliAddDependency -kolliName $mainArgs[1] -source $mainArgs[2] }
-		"s*" { kolliServe -source $mainArgs[1] -ipAddress $mainArgs[2] -port $mainArgs[3] }
+		"set" { kolliSet -property $mainArgs[1] -value $mainArgs[2] }
+		"ser*" { kolliServe -source $mainArgs[1] -ipAddress $mainArgs[2] -port $mainArgs[3] }
 		default { 
 			if( $command ) {
 				logError "No such command '$command'"
