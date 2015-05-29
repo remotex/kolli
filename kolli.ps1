@@ -150,7 +150,16 @@ function writeJson {
 		$kolliObject
 	)
 	$files = $kolliObject.files | % { """{0}""" -f $_ }
-	$dependencies = $kolliObject.dependencies | gm -membertype NoteProperty | % { """{0}"": ""{1}""" -f $_.Name, ( $kolliObject.dependencies | % $_.Name ) }
+	$dependencies = @()
+	if( $kolliObject.dependencies ) {
+		$dependencies = $kolliObject.dependencies | gm -membertype NoteProperty | % { """{0}"": ""{1}""" -f $_.Name, ( $kolliObject.dependencies | % $_.Name ) }
+	}
+	$dependenciesString = ""
+
+	if( $dependencies ) {
+		$dependenciesString = [string]::Join( ",`r`n    ", $dependencies )
+	}
+
 	$json = @"
 {
   "name": "$($kolliObject.name)",
@@ -159,7 +168,7 @@ function writeJson {
     $( [string]::Join( ",`r`n    ", $files ) )
   ],
   "dependencies": {
-    $( [string]::Join( ",`r`n    ", $dependencies ) )
+    $dependenciesString
   }
 }
 "@
