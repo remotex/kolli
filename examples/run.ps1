@@ -36,6 +36,35 @@ try {
         kolli install htns-1.0.0 ..\build
         pop-location
     }
+
+    Write-Host -foregroundcolor green "Adding files and building htns package with new version"
+
+    describeBlock { `
+        push-location htns
+        kolli set files test.txt, conf
+        kolli set version "2.0.0"
+        kolli b ..\build
+        pop-location
+    }
+
+    Write-Host -foregroundcolor green "Installing package htns of new version (2.0.0)"
+
+    describeBlock { `
+        push-location install
+        kolli install htns-2.0.0 ..\build
+        pop-location
+    }
+
+    $installDir = join-path $PWD "install\htns-2.0.0"
+    $files = ls -recurse $installDir | % FullName
+    $expectedFiles = "conf\application.config", "foo.bar", "test.txt" | %{ join-path $installDir $_ }
+
+    $expectedFiles | % { 
+        if( $files -notcontains $_ ) {
+            Write-Host -foregroundcolor red "File $_ was not found when installing htns-2.0.0"
+        }
+    }
 } finally {
     pop-location
+    git checkout htns\kolli.json
 }
