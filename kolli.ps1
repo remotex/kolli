@@ -1,11 +1,6 @@
 <#
 
-Usage (dot-source):
-  
-  PS> . ./kolli.ps1
-  PS> kolli
-
-Usage (alias):
+Usage:
 
   PS> set-alias kolli ./kolli.ps1
   PS> kolli
@@ -582,11 +577,4 @@ function kolliMain {
 	}
 }
 
-if( $pscmd.CommandType -eq "ExternalScript" -and $MyInvocation.CommandOrigin -eq "Internal" -and $pscmd.Name -eq "kolli.ps1") {
-	# kolli.ps1 was dot-sourced, overwirte kolli alias
-	Write-host "Type 'kolli' to begin"
-	set-alias kolli kolliMain
-} else {
-	kolliMain
-}
-
+kolliMain
