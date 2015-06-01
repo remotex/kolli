@@ -451,7 +451,6 @@ function kolliAddDependency {
 
 	$kolliSource = getKolliFromSources $kolliName $sources
 	if( -not $kolliSource.Json ) {
-		logError ("Could not find kolli '{0}' from any source" -f $kolliName )
 		return
 	}
 
