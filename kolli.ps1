@@ -325,13 +325,13 @@ function getKolliFromSource {
 			logInfo "Downloading $jsonUrl"
 			$webclient.DownloadFile($jsonUrl, $jsonPath)
 		} catch {
-			logError "Failed to get '$kolliName' from source '$source' $_"
+			return logError "Failed to get '$kolliName' from source '$source' $_"
 		}
 		try {
 			logInfo "Downloading $zipUrl"
 			$webclient.DownloadFile($zipUrl, $zipPath)
 		} catch {
-			logError "Failed to get zip archive for kolli '$kolliName' from source '$source' $_"
+			return logError "Failed to get zip archive for kolli '$kolliName' from source '$source' $_"
 		}
 	} else {
 		$jsonPath = join-path $source $jsonFileName
