@@ -394,9 +394,10 @@ function kolliAddDependency {
 		return logError "A source is required"
 	}
 
-	$jsonPath = join-path $source "${kolliName}.json"
-	if(!(Test-Path $jsonPath)) {
-		return logError "Could not find kolli '$kolliName' at source '$source'"
+	$kolliSource = getKolliFromSource $kolliName $source
+	if( -not $kolliSource.Json ) {
+		logError ("Could not find kolli '{0}' at source '{1}'" -f $kolliName, $source)
+		return
 	}
 
 	$localKolliPath = join-path $PWD $kolliJson
@@ -405,7 +406,7 @@ function kolliAddDependency {
 	}
 
 	$kolli = readJson $localKolliPath | checkFiles
-	$dependency = readJson $jsonPath
+	$dependency = $kolliSource.Json
 
 	if( $kolli.name -eq $dependency.name -or ( $dependency.dependencies -and $dependency.dependencies | gm $kolli.name ) ) {
 		return logError ( "A circular dependency was detected: '{0}' => '{1}'" -f $dependency.name, $kolli.name )
