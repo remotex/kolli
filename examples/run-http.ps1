@@ -1,8 +1,8 @@
 push-location $PSScriptRoot
 
 try {
-    Write-Host -foregroundcolor green "dot-sourcing ..\kolli.ps1"
-    . ..\kolli.ps1
+    $kolliPath = resolve-path "..\kolli.ps1"
+    set-alias kolli $kolliPath
 
     Write-Host -foregroundcolor green "Cleaning old build and install dir"
     ls | ?{ @( "build", "install" ) -contains $_.Name } | rm -recurse 
@@ -21,17 +21,17 @@ try {
         pop-location
     }
 
-    Write-Host -foregroundcolor green "Building kolli htns"
+    Write-Host -foregroundcolor green "Adding aoeu kolli as dependency and building kolli htns"
 
-    describeBlock { 
+    describeBlock { `
         push-location htns
+        kolli add aoeu-1.0.0 ..\build
         kolli b ..\build
         pop-location
     }
 
-    $kolliPath = resolve-path "..\kolli.ps1"
     $buildPath = resolve-path ".\build"
-    $httpServer = Start-Process $PSHOME\powershell.exe -ArgumentList "-NoProfile","-Command  `"&{ . '$kolliPath'; kolli serve '$buildPath' }`"" -PassThru
+    $httpServer = Start-Process $PSHOME\powershell.exe -ArgumentList "-NoProfile","-Command  `"&{ set-alias kolli '$kolliPath'; kolli serve '$buildPath' }`"" -PassThru
     try {
         Write-Host -foregroundcolor green "Creating directory .\install and installing kolli 'htns' with dependency 'aoeu'"
 

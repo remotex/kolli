@@ -95,11 +95,11 @@ function logHeader {
 	param( $color, $text )
 	$time = $stopwatch.Elapsed
 	write-host -foregroundcolor gray ("[{0:d2}:{1:d2}.{2:d3}]" -f $time.Minutes, $time.Seconds, $time.Milliseconds) -nonewline
-	write-host -foregroundcolor $color "[$text] " -nonewline
+	write-host -foregroundcolor $color ( "[{0}] " -f $text.PadRight(10, " ") ) -nonewline
 }
 
 function logError {
-	logHeader red "error   "
+	logHeader red "error"
 	$kolliErrors.Add( $args ) | out-null
 	$args | out-host
 }
@@ -108,7 +108,7 @@ function logInfo {
 	if( -not $showLogInfo ) { 
 		return 
 	}
-	logHeader yellow "info   "
+	logHeader yellow "info"
 	$args | out-host
 }
 
@@ -124,6 +124,13 @@ filter checkFiles {
 		}
 	}
 	$_
+}
+
+function hasValidName {
+	param( $kolli )
+	if( -not $kolli.name -or $kolli.name -notmatch "^[\w\d\-_]+$" ) {
+		throw "Invalid kolli name: '$($kolli.name)' in $path. Name can only contain alphanumerics, dash and underscore characters."
+	}
 }
 
 function readJson {
@@ -144,6 +151,9 @@ function writeJson {
 		[string] $path,
 		$kolliObject
 	)
+
+	hasValidName $kolliObject
+
 	$files = $kolliObject.files | % { """{0}""" -f $_ }
 	$dependencies = @()
 	if( $kolliObject.dependencies ) {
@@ -211,6 +221,9 @@ function getTempWebFile {
 function cleanupTempFiles {
 	$tempFilesToDelete | % {
 		$path = $_
+		if( -not (test-path $path) ) {
+			continue
+		}
 		try {
 			rm -force $path
 			logInfo "Removed $path"
@@ -218,7 +231,7 @@ function cleanupTempFiles {
 			logError "Failed to clean up cached file: $path"
 		}
 	}
-	$tempFilesToDelete.Clear()	
+	$tempFilesToDelete.Clear()
 }
 
 function getLocalOrGlobalDir {
@@ -252,6 +265,7 @@ function kolliBuild {
 
 	$path = join-path $PWD $kolliJson
 	$kolli = readJson $path | checkFiles
+	hasValidName $kolli
 
 	if(!(Test-Path $buildDir)) {
 		mkdir $buildDir | out-null
@@ -289,6 +303,10 @@ function kolliSet {
 		$kolli.files = $files
 		logInfo ("Total: {0}" -f ($kolli.files | measure).Count)
 		writeJson $path $kolli
+	} elseif( $property -eq "name" ) {
+		$kolli.name = $value
+		logInfo ("Setting name to: {0}" -f $value)
+		writeJson $path $kolli
 	} elseif( $property -eq "version" ) {
 		if( -not ( $value -match "(\d+\.)\d+(-[\w\-\d]+)?") ) {
 			return logError ("The value '{0}' does not seem to be a valid version number" -f $value )
@@ -298,6 +316,24 @@ function kolliSet {
 		writeJson $path $kolli
 	} else {
 		logError ( "Invalid option '{0}' to command 'kolli set'" -f $property )
+	}
+}
+
+function getKolliFromSources {
+	param( 
+		[string] $kolliName,
+		[string[]] $sources 
+	)
+
+	foreach( $source in $sources ) {
+		$kolliSource = getKolliFromSource $kolliName $source
+		if( $kolliSource.Json ) {
+			logSuccess ( "Found '{0}' at source {1}" -f $kolliName, $source )
+			return $kolliSource
+		}
+	}
+	if( -not $kolliSource.Json ) {
+		return logError ("Could not find kolli '{0}' at any source" -f $kolliName, $source)
 	}
 }
 
@@ -320,76 +356,97 @@ function getKolliFromSource {
 			logInfo "Downloading $jsonUrl"
 			$webclient.DownloadFile($jsonUrl, $jsonPath)
 		} catch {
-			return logError "Failed to get '$kolliName' from source '$source' $_"
+			return logInfo "Failed to get '$kolliName' from source '$source' $_"
 		}
 		try {
 			logInfo "Downloading $zipUrl"
 			$webclient.DownloadFile($zipUrl, $zipPath)
 		} catch {
-			return logError "Failed to get zip archive for kolli '$kolliName' from source '$source' $_"
+			return logInfo "Failed to get zip archive for kolli '$kolliName' from source '$source' $_"
 		}
 	} else {
 		$jsonPath = join-path $source $jsonFileName
 		if(!(Test-Path $jsonPath)) {
-			logError "Could not find kolli '$kolliName' at source '$source'"
+			return logInfo "Could not find kolli '$kolliName' at source '$source'"
 		}
 		$zipPath = join-path $source $zipFileName
 		if(!(Test-Path $zipPath)) {
-			logError "Could not find zip archive for kolli '$kolliName' at source '$source'"
+			return logInfo "Could not find zip archive for kolli '$kolliName' at source '$source'"
 		}
 	}
 
-	new-object psobject -property @{ JsonPath = $jsonPath; ZipPath = $zipPath; Json = (readJson $jsonPath) }
+	$json = readJson $jsonPath
+	new-object psobject -property @{ KolliName = $kolliName; JsonPath = $jsonPath; ZipPath = $zipPath; Json = $json }
 }
 
 function kolliInstall {
 	param(
-		[string] $kolliName,
-		[string] $source,
-		[string] $target
+		$kolliName,
+		$kolliSource,
+		[string[]] $sources,
+		[string] $targetDir,
+		[switch] $verifyOnly
 	)
 
-	if( -not $kolliName ) {
+	if( -not $kolliName -and -not $kolliSource ) {
 		return logError "Kolli name is required"
 	}
-	if( -not $source ) {
+	if( -not $sources.Length ) {
 		return logError "A source is required"
 	}
-	if( -not $target ) {
-		$target = join-path ( gi $PWD | % FullName ) $kolliName
+
+	if( $kolliName ) {
+		$kolliSource = getKolliFromSources $kolliName $sources
+	}
+	if( -not $targetDir ) {
+		$targetDir = join-path ( gi $PWD | % FullName ) $kolliSource.KolliName
 	}
 
-	$kolliSource = getKolliFromSource $kolliName $source
-	if( -not $kolliSource.ZipPath ) {
-		logError ("Could not find zip for '{0}' at source '{1}'" -f $kolliName, $source)
-		return
-	}
-	$kolliJson = $kolliSource.Json
-	if( $kolliJson.dependencies ) {
-		$kolliJson.dependencies | gm -membertype NoteProperty | % {
-			$dependencyName = "{0}-{1}" -f $_.Name, ( $kolliJson.dependencies | % $_.Name )
-			logInfo ("Detected dependency {0}" -f $dependencyName)
-			kolliInstall -kolliName $dependencyName -source $source -target $target
+	if( -not $kolliSource.Json ) {
+		return logError ( "Kolli '{0}' could not be found." -f $kolliSource.KolliName )
+	} else {
+		$kolli = $kolliSource.Json
+		$missingDependencies = $false
+		if( $kolli.dependencies ) {
+			$kolli.dependencies | gm -membertype NoteProperty | % {
+				$dependencyName = "{0}-{1}" -f $_.Name, ( $kolli.dependencies | % $_.Name )
+				logSuccess ("Detected dependency {0}" -f $dependencyName)
+				$dependency = getKolliFromSources $dependencyName $sources
+				if( $dependency.Json ) {
+					kolliInstall -kolliSource $dependency -sources $sources -targetDir $targetDir -verifyOnly:$verifyOnly
+				} else {
+					$missingDependencies = $true
+					logError "Dependency '$dependencyName' could not be found."
+				}
+			}
 		}
+		if( $missingDependencies ) {
+			return logError ( "All dependencies for '{0}' could not be found from the sources specified." -f $kolliSource.KolliName )
+		} 
 	}
-	expandZip $kolliSource.ZipPath -target $target
-	logSuccess ("Installed '{0}' into '{1}'" -f $kolliName, $target)
+
+	if( $verifyOnly ) {
+		logSuccess ( "Kolli '{0}' verified successfully." -f $kolliSource.KolliName )
+	} else {
+		expandZip $kolliSource.ZipPath -target $targetDir
+		logSuccess ("Installed '{0}' into '{1}'" -f $kolliSource.KolliName, $targetDir)
+	}
 }
 
 function kolliAddDependency {
 	param(
 		[string] $kolliName,
-		[string] $source
+		[string[]] $sources
 	)
 
 	if( -not $kolliName ) {
 		return logError "Kolli name is required"
 	}
-	if( -not $source ) {
+	if( -not $sources.Length ) {
 		return logError "A source is required"
 	}
 
-	$kolliSource = getKolliFromSource $kolliName $source
+	$kolliSource = getKolliFromSources $kolliName $sources
 	if( -not $kolliSource.Json ) {
 		logError ("Could not find kolli '{0}' at source '{1}'" -f $kolliName, $source)
 		return
@@ -537,6 +594,11 @@ Commands:
     add     Adds a dependency to kolli.json
     build   Builds the package defined by kolli.json
     serve   Starts a development HTTP server that can be used as a package source
+    set     Modifies a property in kolli.json
+            name - changes the name
+            version - changes the version
+            files [pattern] - replaces the files array with the files matching the pattern
+    verify  Verifies a package
 
 "@ | out-host
 }
@@ -551,15 +613,44 @@ function kolliMain {
 		$mainArgs = $args
 	}
 
+	function sourcesFromArgs {
+		param( $startIndex )
+		$sources = new-object System.Collections.ArrayList
+		logInfo "List of sources"
+		for( $i = $startIndex; $i -lt $mainArgs.Length; $i++) {
+			$source = $mainArgs[$i]
+			if( -not ($source.StartsWith("http") -or $source.StartsWith("\\")) -and (test-path $source)) {
+				$source = Resolve-Path $source
+			}
+			$sourceIndex = $sources.Add($source)
+			logInfo ( "[{0}] {1}" -f ( $sourceIndex + 1 ), $sources[$sourceIndex] )
+		}
+
+		if( -not $sources.Length ) {
+			$sources.Add( $PWD.Path ) | out-null
+			logInfo ( "[1] {0}" -f $sources[0] )
+		}
+		$sources
+	}
 
 	$command = $mainArgs[0]
 	switch -wildcard ($command) {
 		"ini*" { kolliInit }
 		"b*" { kolliBuild -buildDir $mainArgs[1] }
-		"ins*" { kolliInstall -kolliName $mainArgs[1] -source $mainArgs[2] }
-		"a*" { kolliAddDependency -kolliName $mainArgs[1] -source $mainArgs[2] }
+		"ins*" { 
+			$sources = sourcesFromArgs -startIndex 2
+			kolliInstall -kolliName $mainArgs[1] -sources $sources 
+		}
+		"a*" { 
+			$sources = sourcesFromArgs -startIndex 2
+			kolliAddDependency -kolliName $mainArgs[1] -sources $sources 
+		}
 		"set" { kolliSet -property $mainArgs[1] -value $mainArgs[2] }
 		"ser*" { kolliServe -source $mainArgs[1] -ipAddress $mainArgs[2] -port $mainArgs[3] }
+		"veri*" { 
+			$sources = sourcesFromArgs -startIndex 2
+			kolliInstall -kolliName $mainArgs[1] -sources $sources -verifyOnly
+		}
 		default { 
 			if( $command ) {
 				logError "No such command '$command'"
