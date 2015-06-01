@@ -333,7 +333,8 @@ function getKolliFromSources {
 		}
 	}
 	if( -not $kolliSource.Json ) {
-		return logError ("Could not find kolli '{0}' at any source" -f $kolliName, $source)
+		logError ("Could not find kolli '{0}' at any source" -f $kolliName, $source)
+		return $kolliSource
 	}
 }
 
@@ -397,13 +398,15 @@ function kolliInstall {
 
 	if( $kolliName ) {
 		$kolliSource = getKolliFromSources $kolliName $sources
+	} else {
+		$kolliName = $kolliSource.KolliName
 	}
 	if( -not $targetDir ) {
-		$targetDir = join-path ( gi $PWD | % FullName ) $kolliSource.KolliName
+		$targetDir = join-path ( gi $PWD | % FullName ) $kolliName
 	}
 
 	if( -not $kolliSource.Json ) {
-		return logError ( "Kolli '{0}' could not be found." -f $kolliSource.KolliName )
+		return logError ( "Kolli '{0}' could not be found." -f $kolliName )
 	} else {
 		$kolli = $kolliSource.Json
 		$missingDependencies = $false
@@ -421,15 +424,15 @@ function kolliInstall {
 			}
 		}
 		if( $missingDependencies ) {
-			return logError ( "All dependencies for '{0}' could not be found from the sources specified." -f $kolliSource.KolliName )
+			return logError ( "All dependencies for '{0}' could not be found from the sources specified." -f $kolliName )
 		} 
 	}
 
 	if( $verifyOnly ) {
-		logSuccess ( "Kolli '{0}' verified successfully." -f $kolliSource.KolliName )
+		logSuccess ( "Kolli '{0}' verified successfully." -f $kolliName )
 	} else {
 		expandZip $kolliSource.ZipPath -target $targetDir
-		logSuccess ("Installed '{0}' into '{1}'" -f $kolliSource.KolliName, $targetDir)
+		logSuccess ("Installed '{0}' into '{1}'" -f $kolliName, $targetDir)
 	}
 }
 
