@@ -669,6 +669,7 @@ function kolliMain {
 	if( $kolliErrors.Count ) {
 		write-host -foregroundcolor red "Found $($kolliErrors.Count) errors"
 	}
+	$kolliErrors.Count
 }
 
-kolliMain
+exit kolliMain
