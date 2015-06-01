@@ -581,11 +581,11 @@ function kolliMain {
 	}
 }
 
-if( $MyInvocation.CommandOrigin -eq "Runspace" ) {
-	kolliMain
-} else {
+if( $pscmd.CommandType -eq "ExternalScript" -and $MyInvocation.CommandOrigin -eq "Internal" -and $pscmd.Name -eq "kolli.ps1") {
 	# kolli.ps1 was dot-sourced, overwirte kolli alias
 	Write-host "Type 'kolli' to begin"
 	set-alias kolli kolliMain
+} else {
+	kolliMain
 }
 
