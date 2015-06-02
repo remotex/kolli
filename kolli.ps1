@@ -278,6 +278,7 @@ function runPostInstall {
 	}
 
 	if( $postinstall ) {
+		$tempPsFile = $null
 		$tokens = $postinstall.Split(" ")
 		$filePath = join-path $workingDirectory $tokens[0]
 		$arguments = ""
@@ -330,6 +331,9 @@ function runPostInstall {
 			logInfo ( "post-install process with id {0} exited with code {1} after {2:f2} seconds" -f $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds )
 		}
 
+		if( $tempPsFile -and (test-path $tempPsFile ) ) {
+			rm $tempPsFile -force
+		}
 	}
 }
 
