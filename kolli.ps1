@@ -282,7 +282,7 @@ function runPostInstall {
 		$filePath = join-path $workingDirectory $tokens[0]
 		$arguments = ""
 		if( $tokens.Length -gt 1 ) {
-			$arguments = [string]::Join( " ", $tokens, 1, $tokens.Length-2 )
+			$arguments = [string]::Join( " ", $tokens, 1, $tokens.Length-1 )
 		}
 
 		logInfo ( "{0} post-install ""{1}"" ""{2}""" -f $kolli.name, $filePath, $arguments )
@@ -295,7 +295,10 @@ function runPostInstall {
 		$workingDirectory = $filePath | Split-Path
 
 		if( ( $filePath | gi | % Extension ) -eq ".ps1" ) {
-			$arguments = "-NonInteractive $filePath $arguments"
+			$tempPsFile = join-path $env:temp ( [System.IO.Path]::GetRandomFileName() + ".ps1" )
+			$postinstall = "& $filePath $arguments"
+			sc $tempPsFile $postinstall
+			$arguments = "-NonInteractive -File $tempPsFile"
 			$filePath = get-command powershell | % path
 		}
 
