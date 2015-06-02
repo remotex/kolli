@@ -154,7 +154,10 @@ function writeJson {
 
 	hasValidName $kolliObject
 
-	$files = $kolliObject.files | % { """{0}""" -f $_ }
+	$files = @()
+	if( $kolliObject.files ) {
+		$files = $kolliObject.files | % { """{0}""" -f $_ }
+	}
 	$dependencies = @()
 	if( $kolliObject.dependencies ) {
 		$dependencies = $kolliObject.dependencies | gm -membertype NoteProperty | % { """{0}"": ""{1}""" -f $_.Name, ( $kolliObject.dependencies | % $_.Name ) }
@@ -165,10 +168,20 @@ function writeJson {
 		$dependenciesString = [string]::Join( ",`r`n    ", $dependencies )
 	}
 
+	$scripts = ""
+	if( $kolliObject.scripts -and $kolliObject.scripts.postinstall ) {
+		$scripts = @"
+
+  "scripts": {
+    "postinstall": $($kolliObject.scripts.postinstall | ConvertTo-Json)
+  },
+"@
+	}
+
 	$json = @"
 {
   "name": "$($kolliObject.name)",
-  "version": "$($kolliObject.version)",
+  "version": "$($kolliObject.version)",$scripts
   "files": [
     $( [string]::Join( ",`r`n    ", $files ) )
   ],
@@ -256,6 +269,67 @@ function getLocalOrGlobalDir {
 	$fullName
 }
 
+function runPostInstall {
+	param( $kolli, $workingDirectory )
+
+	$postinstall = ""
+	if( $kolli.scripts -and $kolli.scripts.postinstall ) {
+		$postinstall = $kolli.scripts.postinstall
+	}
+
+	if( $postinstall ) {
+		$tokens = $postinstall.Split(" ")
+		$filePath = join-path $workingDirectory $tokens[0]
+		$arguments = ""
+		if( $tokens.Length -gt 1 ) {
+			$arguments = [string]::Join( " ", $tokens, 1, $tokens.Length-2 )
+		}
+
+		logInfo ( "{0} post-install ""{1}"" ""{2}""" -f $kolli.name, $filePath, $arguments )
+
+		if( test-path $filePath ) {
+			$filePath = Resolve-Path $filePath
+		} else {
+			return logError "post-install failed: No such file: $filePath"
+		}
+		$workingDirectory = $filePath | Split-Path
+
+		if( ( $filePath | gi | % Extension ) -eq ".ps1" ) {
+			$arguments = "-NonInteractive $filePath $arguments"
+			$filePath = get-command powershell | % path
+		}
+
+		logSuccess "Calling post-install script: $postinstall"
+
+		$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+		$proc = Start-Process -FilePath $filePath -ArgumentList $arguments -WorkingDirectory $workingDirectory -NoNewWindow -PassThru
+
+		logInfo ( "post-install command is executing using PID {0}" -f $proc.Id )
+
+		$maxPostInstallScriptExecutionSeconds = 60
+		while( -not $proc.WaitForExit( 10 * 1000 ) ) {
+			if( $stopwatch.Elapsed.TotalSeconds -gt $maxPostInstallScriptExecutionSeconds ) {
+				logError ( "Killing post-install process with id {0} since it have not completed within {1} seconds" -f $proc.Id, $maxPostInstallScriptExecutionSeconds )
+				try {
+					$proc.Kill()
+				} catch {
+					logError ( "Failed to kill post-install process with id {0}: {1}" -f $proc.Id, $_ )
+				}
+				break
+			}
+		}
+
+		$proc.Refresh()
+
+		if( -not $proc.ExitCode ) {
+			logSuccess ( "post-install command executed successfully in {0:f2} seconds" -f $stopwatch.Elapsed.TotalSeconds )
+		} else {
+			logInfo ( "post-install process with id {0} exited with code {1} after {2:f2} seconds" -f $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds )
+		}
+
+	}
+}
+
 function kolliBuild {
 	param(
 		$buildDir
@@ -306,6 +380,16 @@ function kolliSet {
 	} elseif( $property -eq "name" ) {
 		$kolli.name = $value
 		logInfo ("Setting name to: {0}" -f $value)
+		writeJson $path $kolli
+	} elseif( $property -eq "postinstall" ) {
+		if( -not $kolli.scripts ) {
+			$kolli | add-member -membertype NoteProperty -name scripts -value (new-object psobject @{ postinstall = "" })
+		}
+		if( -not $kolli.scripts.postinstall ) {
+			$kolli.scripts | add-member -membertype NoteProperty -name postinstall -value ""
+		}
+		$kolli.scripts.postinstall = $value
+		logInfo ("Setting postinstall command to: {0}" -f $value)
 		writeJson $path $kolli
 	} elseif( $property -eq "version" ) {
 		if( -not ( $value -match "(\d+\.)\d+(-[\w\-\d]+)?") ) {
@@ -433,6 +517,7 @@ function kolliInstall {
 	} else {
 		expandZip $kolliSource.ZipPath -target $targetDir
 		logSuccess ("Installed '{0}' into '{1}'" -f $kolliName, $targetDir)
+		runPostInstall $kolliSource.Json $targetDir
 	}
 }
 
