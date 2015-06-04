@@ -94,6 +94,12 @@ function readInput {
 function logHeader {
 	param( $color, $text )
 	$time = $stopwatch.Elapsed
+	if( $PSSenderInfo ) {
+		# Display info about winrm session
+		$sessionUri = New-Object System.Uri $PSSenderInfo.ConnectionString
+		$user = $PSSenderInfo.ConnectedUser.Split("\") | select -last 1
+		write-host -foregroundcolor gray ("[{0}@{1}]" -f $user, $sessionUri.Host) -nonewline
+	}
 	write-host -foregroundcolor gray ("[{0:d2}:{1:d2}.{2:d3}]" -f $time.Minutes, $time.Seconds, $time.Milliseconds) -nonewline
 	write-host -foregroundcolor $color ( "[{0}] " -f $text.PadRight(10, " ") ) -nonewline
 }
