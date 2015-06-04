@@ -757,9 +757,8 @@ function kolliMain {
 	$stopwatch.Stop()
 
 	if( $kolliErrors.Count ) {
-		write-host -foregroundcolor red "Found $($kolliErrors.Count) errors"
+		Write-Error "Found $($kolliErrors.Count) errors: $( $kolliErrors | %{ ""`r`n""; $_ } )"
 	}
-	$kolliErrors.Count
 }
 
-exit kolliMain
+kolliMain
