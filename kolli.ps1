@@ -107,7 +107,10 @@ function logHeader {
 function logError {
 	logHeader red "error"
 	$kolliErrors.Add( $args ) | out-null
-	$args | out-host
+	$args | %{
+		Write-Host -nonewline $_
+	}
+	Write-Host ""
 }
 
 function logInfo {
@@ -115,12 +118,18 @@ function logInfo {
 		return 
 	}
 	logHeader yellow "info"
-	$args | out-host
+	$args | %{
+		Write-Host -nonewline $_
+	}
+	Write-Host ""
 }
 
 function logSuccess {
 	logHeader green "success"
-	$args | out-host
+	$args | %{
+		Write-Host -nonewline $_
+	}
+	Write-Host ""
 }
 
 filter checkFiles {
