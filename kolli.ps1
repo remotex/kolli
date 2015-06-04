@@ -234,14 +234,13 @@ function getTempWebFile {
 function cleanupTempFiles {
 	$tempFilesToDelete | % {
 		$path = $_
-		if( -not (test-path $path) ) {
-			continue
-		}
-		try {
-			rm -force $path
-			logInfo "Removed $path"
-		} catch {
-			logError "Failed to clean up cached file: $path"
+		if( test-path $path ) {
+			try {
+				rm -force $path
+				logInfo "Removed $path"
+			} catch {
+				logError "Failed to clean up cached file: $path"
+			}
 		}
 	}
 	$tempFilesToDelete.Clear()
