@@ -94,7 +94,7 @@ function readInput {
 function logHeader {
 	param( $color, $text )
 	$time = $stopwatch.Elapsed
-	if( $PSSenderInfo ) {
+	if( get-variable -include PSSenderInfo ) {
 		# Display info about winrm session
 		$sessionUri = New-Object System.Uri $PSSenderInfo.ConnectionString
 		$user = $PSSenderInfo.ConnectedUser.Split("\") | select -last 1
