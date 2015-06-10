@@ -320,7 +320,28 @@ function runPostInstall {
 		logSuccess "Calling post-install script: $postinstall"
 
 		$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-		$proc = Start-Process -FilePath $filePath -ArgumentList $arguments -WorkingDirectory $workingDirectory -NoNewWindow -PassThru
+		$pinfo = New-Object System.Diagnostics.ProcessStartInfo
+		$pinfo.FileName = $filePath
+		$pinfo.CreateNoWindow = $true
+		$pinfo.RedirectStandardError = $true
+		$pinfo.RedirectStandardOutput = $true
+		$pinfo.UseShellExecute = $false
+		$pinfo.Arguments = $arguments
+		$pinfo.WorkingDirectory = $workingDirectory
+		$proc = New-Object System.Diagnostics.Process
+		$proc.StartInfo = $pinfo
+
+		$stdOutEvent = Register-ObjectEvent -InputObject $proc -Action { 
+			logInfo ("[PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
+		} -EventName "OutputDataReceived"
+		$stdErrEvent = Register-ObjectEvent -InputObject $proc -Action { 
+			if( -not [string]::IsNullOrEmpty( $EventArgs.Data ) ) { 
+				logError ("[PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
+			}
+		} -EventName "ErrorDataReceived"
+		$proc.Start() | Out-Null
+		$proc.BeginOutputReadLine()
+		$proc.BeginErrorReadLine()
 
 		logInfo ( "post-install command is executing using PID {0}" -f $proc.Id )
 
@@ -336,6 +357,9 @@ function runPostInstall {
 				break
 			}
 		}
+
+		Unregister-Event -SourceIdentifier $stdOutEvent.Name
+		Unregister-Event -SourceIdentifier $stdErrEvent.Name
 
 		$proc.Refresh()
 
