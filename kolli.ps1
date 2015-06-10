@@ -339,10 +339,10 @@ function runPostInstall {
 
 		$proc.Refresh()
 
-		if( -not $proc.ExitCode ) {
+		if( $proc.ExitCode -eq 0 ) {
 			logSuccess ( "post-install command executed successfully in {0:f2} seconds" -f $stopwatch.Elapsed.TotalSeconds )
 		} else {
-			logInfo ( "post-install process with id {0} exited with code {1} after {2:f2} seconds" -f $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds )
+			logInfo ( "post-install process with id {0} exited with code '{1}' after {2:f2} seconds" -f $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds )
 		}
 
 		if( $tempPsFile -and (test-path $tempPsFile ) ) {
