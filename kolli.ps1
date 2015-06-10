@@ -462,12 +462,14 @@ function getKolliFromSource {
 			logInfo "Downloading $jsonUrl"
 			$webclient.DownloadFile($jsonUrl, $jsonPath)
 		} catch {
+			$error.Remove($error[0])
 			return logInfo "Failed to get '$kolliName' from source '$source' $_"
 		}
 		try {
 			logInfo "Downloading $zipUrl"
 			$webclient.DownloadFile($zipUrl, $zipPath)
 		} catch {
+			$error.Remove($error[0])
 			return logInfo "Failed to get zip archive for kolli '$kolliName' from source '$source' $_"
 		}
 	} else {
