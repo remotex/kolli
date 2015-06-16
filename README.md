@@ -1,7 +1,8 @@
 ###### kolli [![Build Status](https://pf-hudson.remotex.net/buildStatus/icon?job=kolli)](https://pf-hudson.remotex.net/job/kolli)
 
 # kolli package manager
-![collie is not kolli](https://dl.dropboxusercontent.com/u/126999/kolli.png)
+![collie is not kolli](logo.png)
+
 ## What
 
 A minimalistic approach to put applications on servers (deployment) decent amount of borrowed features from NPM, bower, nuget and maybe Chocolatey as well. Think multi-part zip archives.
@@ -132,3 +133,5 @@ More thought of something like the [cron](https://docs.puppetlabs.com/references
 ## Ambitions
 
 The ```kolli.json``` manifest file is not tied to any kind of operating system nor platform such as Ruby, Node, .Net etc. However, each implementation of Kolli is from our perspective should/could be targeted for use with a specific platform. That very specific scenario for our case is deploying pre-packaged .net applications (asp.net/iis app, console app, windows services) sourced from a build artifact repository requiring only a PowerShell session (possibly a WinRM session).
+
+[![forthebadge](http://forthebadge.com/images/badges/powered-by-electricity.svg)](http://forthebadge.com)
