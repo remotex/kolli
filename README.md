@@ -3,6 +3,9 @@
 # kolli package manager
 ![collie is not kolli](logo.png)
 
+
+![lol](brie.png)
+
 ## What
 
 A minimalistic approach to put applications on servers (deployment) decent amount of borrowed features from NPM, bower, nuget and maybe Chocolatey as well. Think multi-part zip archives.
