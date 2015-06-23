@@ -284,18 +284,18 @@ function getLocalOrGlobalDir {
 }
 
 function runPostInstall {
-	param( $kolli, $workingDirectory )
+	param( $kolli, [string] $workingDirectory )
 
 	$postinstall = @()
 	if( $kolli.scripts -and $kolli.scripts.postinstall ) {
 		$postinstall += $kolli.scripts.postinstall
 	}
 
-	$postinstall | %{ runPostInstallScript -command $_ }
+	$postinstall | %{ runPostInstallScript -command $_ -workingDirectory $workingDirectory }
 }
 
 function runPostInstallScript {
-	param( [string] $command )
+	param( [string] $command, [string] $workingDirectory )
 
 	$tempPsFile = $null
 	$tokens = $command.Split(" ")
