@@ -42,7 +42,7 @@ try {
     describeBlock { `
         push-location htns
         kolli set files test.txt, conf, bin
-        kolli set postinstall ".\bin\create-testfile.ps1 -fileName 'postinstall.txt'", ".\bin\create-testfile.ps1 -setjob -name ""remotex-connecttotrello"" -cron ""H/5 * * * *"" -command ""ConnectToTrello.exe"""
+        kolli set postinstall ".\bin\create-testfile.ps1 -fileName 'postinstall.txt' -value `$env:SystemDrive\test", ".\bin\create-testfile.ps1 -setjob -name ""remotex-connecttotrello"" -cron ""H/5 * * * *"" -command ""ConnectToTrello.exe"""
         kolli set version "2.0.0"
         kolli b ..\build
         pop-location
@@ -68,6 +68,12 @@ try {
         if( $files -notcontains $_ ) {
             Write-Host -foregroundcolor red "File $_ was not found when installing htns-2.0.0"
         }
+    }
+
+    $actualValue = gc (join-path $installDir "postinstall.txt" )
+    $expectedValue = "$env:SystemDrive\test"
+    if( $actualValue -ne $expectedValue ) {
+        Write-Host -foregroundcolor red "File postinstall.txt did not contain the expected value.`r`nExpected: $expectedValue`r`nActual: $actualValue"
     }
 } finally {
     pop-location
