@@ -286,92 +286,96 @@ function getLocalOrGlobalDir {
 function runPostInstall {
 	param( $kolli, $workingDirectory )
 
-	$postinstall = ""
+	$postinstall = @()
 	if( $kolli.scripts -and $kolli.scripts.postinstall ) {
-		$postinstall = $kolli.scripts.postinstall
+		$postinstall += $kolli.scripts.postinstall
 	}
 
-	if( $postinstall ) {
-		$tempPsFile = $null
-		$tokens = $postinstall.Split(" ")
-		$filePath = join-path $workingDirectory $tokens[0]
-		$arguments = ""
-		if( $tokens.Length -gt 1 ) {
-			$arguments = [string]::Join( " ", $tokens, 1, $tokens.Length-1 )
+	$postinstall | %{ runPostInstallScript -command $_ }
+}
+
+function runPostInstallScript {
+	param( [string] $command )
+
+	$tempPsFile = $null
+	$tokens = $command.Split(" ")
+	$filePath = join-path $workingDirectory $tokens[0]
+	$arguments = ""
+	if( $tokens.Length -gt 1 ) {
+		$arguments = [string]::Join( " ", $tokens, 1, $tokens.Length-1 )
+	}
+
+	logInfo ( "{0} post-install ""{1}"" ""{2}""" -f $kolli.name, $filePath, $arguments )
+
+	if( test-path $filePath ) {
+		$filePath = Resolve-Path $filePath
+	} else {
+		return logError "post-install failed: No such file: $filePath"
+	}
+	$workingDirectory = $filePath | Split-Path
+
+	if( ( $filePath | gi | % Extension ) -eq ".ps1" ) {
+		$tempPsFile = join-path $env:temp ( [System.IO.Path]::GetRandomFileName() + ".ps1" )
+		$command = "set-alias psScript ""$filePath""`r`npsScript $arguments"
+		sc $tempPsFile $command
+		$arguments = "-NonInteractive -File $tempPsFile"
+		$filePath = get-command powershell | % path
+	}
+
+	logSuccess "Calling post-install script: $command"
+
+	$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+	$pinfo = New-Object System.Diagnostics.ProcessStartInfo
+	$pinfo.FileName = $filePath
+	$pinfo.CreateNoWindow = $true
+	$pinfo.RedirectStandardError = $true
+	$pinfo.RedirectStandardOutput = $true
+	$pinfo.UseShellExecute = $false
+	$pinfo.Arguments = $arguments
+	$pinfo.WorkingDirectory = $workingDirectory
+	$proc = New-Object System.Diagnostics.Process
+	$proc.StartInfo = $pinfo
+
+	$stdOutEvent = Register-ObjectEvent -InputObject $proc -Action { 
+		logInfo ("[PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
+	} -EventName "OutputDataReceived"
+	$stdErrEvent = Register-ObjectEvent -InputObject $proc -Action { 
+		if( -not [string]::IsNullOrEmpty( $EventArgs.Data ) ) { 
+			logError ("[PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
 		}
+	} -EventName "ErrorDataReceived"
+	$proc.Start() | Out-Null
+	$proc.BeginOutputReadLine()
+	$proc.BeginErrorReadLine()
 
-		logInfo ( "{0} post-install ""{1}"" ""{2}""" -f $kolli.name, $filePath, $arguments )
+	logInfo ( "post-install command is executing using PID {0}" -f $proc.Id )
 
-		if( test-path $filePath ) {
-			$filePath = Resolve-Path $filePath
-		} else {
-			return logError "post-install failed: No such file: $filePath"
-		}
-		$workingDirectory = $filePath | Split-Path
-
-		if( ( $filePath | gi | % Extension ) -eq ".ps1" ) {
-			$tempPsFile = join-path $env:temp ( [System.IO.Path]::GetRandomFileName() + ".ps1" )
-			$postinstall = "& $filePath $arguments"
-			sc $tempPsFile $postinstall
-			$arguments = "-NonInteractive -File $tempPsFile"
-			$filePath = get-command powershell | % path
-		}
-
-		logSuccess "Calling post-install script: $postinstall"
-
-		$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-		$pinfo = New-Object System.Diagnostics.ProcessStartInfo
-		$pinfo.FileName = $filePath
-		$pinfo.CreateNoWindow = $true
-		$pinfo.RedirectStandardError = $true
-		$pinfo.RedirectStandardOutput = $true
-		$pinfo.UseShellExecute = $false
-		$pinfo.Arguments = $arguments
-		$pinfo.WorkingDirectory = $workingDirectory
-		$proc = New-Object System.Diagnostics.Process
-		$proc.StartInfo = $pinfo
-
-		$stdOutEvent = Register-ObjectEvent -InputObject $proc -Action { 
-			logInfo ("[PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
-		} -EventName "OutputDataReceived"
-		$stdErrEvent = Register-ObjectEvent -InputObject $proc -Action { 
-			if( -not [string]::IsNullOrEmpty( $EventArgs.Data ) ) { 
-				logError ("[PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
+	$maxPostInstallScriptExecutionSeconds = 60
+	while( -not $proc.WaitForExit( 10 * 1000 ) ) {
+		if( $stopwatch.Elapsed.TotalSeconds -gt $maxPostInstallScriptExecutionSeconds ) {
+			logError ( "Killing post-install process with id {0} since it have not completed within {1} seconds" -f $proc.Id, $maxPostInstallScriptExecutionSeconds )
+			try {
+				$proc.Kill()
+			} catch {
+				logError ( "Failed to kill post-install process with id {0}: {1}" -f $proc.Id, $_ )
 			}
-		} -EventName "ErrorDataReceived"
-		$proc.Start() | Out-Null
-		$proc.BeginOutputReadLine()
-		$proc.BeginErrorReadLine()
-
-		logInfo ( "post-install command is executing using PID {0}" -f $proc.Id )
-
-		$maxPostInstallScriptExecutionSeconds = 60
-		while( -not $proc.WaitForExit( 10 * 1000 ) ) {
-			if( $stopwatch.Elapsed.TotalSeconds -gt $maxPostInstallScriptExecutionSeconds ) {
-				logError ( "Killing post-install process with id {0} since it have not completed within {1} seconds" -f $proc.Id, $maxPostInstallScriptExecutionSeconds )
-				try {
-					$proc.Kill()
-				} catch {
-					logError ( "Failed to kill post-install process with id {0}: {1}" -f $proc.Id, $_ )
-				}
-				break
-			}
+			break
 		}
+	}
 
-		Unregister-Event -SourceIdentifier $stdOutEvent.Name
-		Unregister-Event -SourceIdentifier $stdErrEvent.Name
+	Unregister-Event -SourceIdentifier $stdOutEvent.Name
+	Unregister-Event -SourceIdentifier $stdErrEvent.Name
 
-		$proc.Refresh()
+	$proc.Refresh()
 
-		if( $proc.ExitCode -eq 0 ) {
-			logSuccess ( "post-install command executed successfully in {0:f2} seconds" -f $stopwatch.Elapsed.TotalSeconds )
-		} else {
-			logInfo ( "post-install process with id {0} exited with code '{1}' after {2:f2} seconds" -f $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds )
-		}
+	if( $proc.ExitCode -eq 0 ) {
+		logSuccess ( "post-install command executed successfully in {0:f2} seconds" -f $stopwatch.Elapsed.TotalSeconds )
+	} else {
+		logInfo ( "post-install process with id {0} exited with code '{1}' after {2:f2} seconds" -f $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds )
+	}
 
-		if( $tempPsFile -and (test-path $tempPsFile ) ) {
-			rm $tempPsFile -force
-		}
+	if( $tempPsFile -and (test-path $tempPsFile ) ) {
+		rm $tempPsFile -force
 	}
 }
 
@@ -428,13 +432,15 @@ function kolliSet {
 		writeJson $path $kolli
 	} elseif( $property -eq "postinstall" ) {
 		if( -not $kolli.scripts ) {
-			$kolli | add-member -membertype NoteProperty -name scripts -value (new-object psobject @{ postinstall = "" })
+			$kolli | add-member -membertype NoteProperty -name scripts -value (new-object psobject)
 		}
 		if( -not $kolli.scripts.postinstall ) {
 			$kolli.scripts | add-member -membertype NoteProperty -name postinstall -value ""
 		}
 		$kolli.scripts.postinstall = $value
-		logInfo ("Setting postinstall command to: {0}" -f $value)
+		$value | %{
+			logInfo ("Add postinstall command: {0}" -f $_)
+		}
 		writeJson $path $kolli
 	} elseif( $property -eq "version" ) {
 		if( -not ( $value -match "(\d+\.)\d+(-[\w\-\d]+)?") ) {

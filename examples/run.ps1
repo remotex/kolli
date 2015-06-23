@@ -42,7 +42,7 @@ try {
     describeBlock { `
         push-location htns
         kolli set files test.txt, conf, bin
-        kolli set postinstall ".\bin\create-testfile.ps1 'foo' 'bar' 42"
+        kolli set postinstall ".\bin\create-testfile.ps1 -fileName 'postinstall.txt'", ".\bin\create-testfile.ps1 -setjob -name ""remotex-connecttotrello"" -cron ""H/5 * * * *"" -command ""ConnectToTrello.exe"""
         kolli set version "2.0.0"
         kolli b ..\build
         pop-location
@@ -62,7 +62,7 @@ try {
 
     $installDir = join-path $PWD "install\htns-2.0.0"
     $files = ls -recurse $installDir | % FullName
-    $expectedFiles = "conf\application.config", "foo.bar", "test.txt", "postinstall.log" | %{ join-path $installDir $_ }
+    $expectedFiles = "conf\application.config", "foo.bar", "test.txt", "postinstall.log", "postinstall.txt" | %{ join-path $installDir $_ }
 
     $expectedFiles | % { 
         if( $files -notcontains $_ ) {
