@@ -151,8 +151,11 @@ function hasValidName {
 function readJson {
 	param( [parameter(mandatory = $true)] $path )
 
-	$kolli = get-content $path | out-string | convertfrom-json
-
+	try {
+		$kolli = get-content $path | out-string | convertfrom-json
+	} catch {
+		throw "Failed to parse JSON of '$path': $_"
+	}
 	$dir = $path | Split-Path
 	$getAbsoluteFilePaths = [ScriptBlock]::Create("`$this.files | % { join-path ""$dir"" `$_ } ")
 	$kolli | add-member -passthru `
