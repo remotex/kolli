@@ -26,16 +26,20 @@ function newZip {
 		Add-type -AssemblyName "System.IO.Compression.FileSystem"
 		if(Test-Path $target) { Remove-Item $target -force }
 		$zip = [System.IO.Compression.ZipFile]::Open( $target, "Create" )
+		$filesToAdd = @()
 	}
 	process {
-		$files | Resolve-Path | ls -recurse -force -file | % FullName | % {
-			$relativePath = Resolve-Path $_ -Relative
-			[void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_, $relativePath.TrimStart(".\"), [System.IO.Compression.CompressionLevel]::Optimal)
-		}
+		$filesToAdd += $files | Resolve-Path | ls -recurse -force -file | % FullName
 	}
 	end {
+		$filesToAdd = $filesToAdd | select -unique
+		$filesToAdd | % {
+			$relativePath = Resolve-Path $_ -Relative
+			logInfo ("Adding {0} -> {1}" -f $_, $relativePath)
+			[void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_, $relativePath.TrimStart(".\"), [System.IO.Compression.CompressionLevel]::Optimal)
+		}
 		$zip.Dispose()
-		Get-Item $target
+		Get-Item $target | Add-Member -PassThru -MemberType NoteProperty -Name ArchiveFileCount -Value $filesToAdd.Count
 	}
 }
 function expandZip {
@@ -406,9 +410,9 @@ function kolliBuild {
 	logSuccess "Created $outputJson"
 
 	$tempZipPath = [System.IO.Path]::GetTempFileName()
-	$kolli.GetAbsoluteFilePaths() | Get-Item | newZip -target $tempZipPath | out-null
+	$zipFile = $kolli.GetAbsoluteFilePaths() | Get-Item | newZip -target $tempZipPath
 	mv $tempZipPath $outputZip -force
-	logSuccess "Created $outputZip"
+	logSuccess ( "Created {0} with {1} files" -f $outputZip, $zipFile.ArchiveFileCount )
 
 }
 
