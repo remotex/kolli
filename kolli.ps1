@@ -323,9 +323,9 @@ function runPostInstallScript {
 
 	if( ( $filePath | gi | % Extension ) -eq ".ps1" ) {
 		$tempPsFile = join-path $env:temp ( [System.IO.Path]::GetRandomFileName() + ".ps1" )
-		$command = "set-alias psScript ""$filePath""`r`npsScript $arguments"
+		$command = "cd ""$workingDirectory""`r`nset-alias psScript ""$filePath""`r`npsScript $arguments"
 		sc $tempPsFile $command
-		$arguments = "-NonInteractive -File $tempPsFile"
+		$arguments = "-NonInteractive -NoProfile -File $tempPsFile"
 		$filePath = get-command powershell | % path
 	}
 
