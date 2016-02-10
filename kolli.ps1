@@ -344,11 +344,11 @@ function runPostInstallScript {
 	$proc.StartInfo = $pinfo
 
 	$stdOutEvent = Register-ObjectEvent -InputObject $proc -Action { 
-		logInfo ("[PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
+		write-host ("[postinstall][PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
 	} -EventName "OutputDataReceived"
 	$stdErrEvent = Register-ObjectEvent -InputObject $proc -Action { 
 		if( -not [string]::IsNullOrEmpty( $EventArgs.Data ) ) { 
-			logError ("[PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
+			write-host ("[postinstall][PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
 		}
 	} -EventName "ErrorDataReceived"
 	$proc.Start() | Out-Null
