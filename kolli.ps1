@@ -253,6 +253,17 @@ function getTempWebFile {
 	$tempFilePath
 }
 
+function makeTempTargetDir {
+	param( $targetDir ) 
+
+	$tempDir = "${targetDir}__kollitmp"
+	if( test-path -pathtype container $tempDir ) {
+		rm -force -recurse $tempDir
+	}
+	mkdir $tempDir | out-null
+	$tempDir
+}
+
 function cleanupTempFiles {
 	$tempFilesToDelete | % {
 		$path = $_
@@ -290,6 +301,17 @@ function getLocalOrGlobalDir {
 	$fullName
 }
 
+function runPreInstall {
+	param( $kolli, [string] $workingDirectory )
+
+	$preinstall = @()
+	if( $kolli.scripts -and $kolli.scripts.preinstall ) {
+		$preinstall += $kolli.scripts.preinstall
+	}
+
+	$preinstall | %{ runScript -command $_ -workingDirectory $workingDirectory -type "preinstall" }
+}
+
 function runPostInstall {
 	param( $kolli, [string] $workingDirectory )
 
@@ -298,11 +320,11 @@ function runPostInstall {
 		$postinstall += $kolli.scripts.postinstall
 	}
 
-	$postinstall | %{ runPostInstallScript -command $_ -workingDirectory $workingDirectory }
+	$postinstall | %{ runScript -command $_ -workingDirectory $workingDirectory -type "postinstall" }
 }
 
-function runPostInstallScript {
-	param( [string] $command, [string] $workingDirectory )
+function runScript {
+	param( [string] $command, [string] $workingDirectory, [string] $type )
 
 	$tempPsFile = $null
 	$tokens = $command.Split(" ")
@@ -312,12 +334,12 @@ function runPostInstallScript {
 		$arguments = [string]::Join( " ", $tokens, 1, $tokens.Length-1 )
 	}
 
-	logInfo ( "{0} post-install ""{1}"" ""{2}""" -f $kolli.name, $filePath, $arguments )
+	logInfo ( "{0} {1} ""{2}"" ""{3}""" -f $kolli.name, $type, $filePath, $arguments )
 
 	if( test-path $filePath ) {
 		$filePath = Resolve-Path $filePath
 	} else {
-		return logError "post-install failed: No such file: $filePath"
+		return logError "$type failed: No such file: $filePath"
 	}
 	$workingDirectory = $filePath | Split-Path
 
@@ -329,7 +351,7 @@ function runPostInstallScript {
 		$filePath = get-command powershell | % path
 	}
 
-	logSuccess "Calling post-install script: $command"
+	logSuccess "Calling $type script: $command"
 
 	$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 	$pinfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -344,27 +366,27 @@ function runPostInstallScript {
 	$proc.StartInfo = $pinfo
 
 	$stdOutEvent = Register-ObjectEvent -InputObject $proc -Action { 
-		write-host ("[postinstall][PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
+		write-host ("[script][PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
 	} -EventName "OutputDataReceived"
 	$stdErrEvent = Register-ObjectEvent -InputObject $proc -Action { 
 		if( -not [string]::IsNullOrEmpty( $EventArgs.Data ) ) { 
-			write-host ("[postinstall][PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
+			write-host ("[script][PID {0}] {1}" -f $Sender.Id, $EventArgs.Data ) 
 		}
 	} -EventName "ErrorDataReceived"
 	$proc.Start() | Out-Null
 	$proc.BeginOutputReadLine()
 	$proc.BeginErrorReadLine()
 
-	logInfo ( "post-install command is executing using PID {0}" -f $proc.Id )
+	logInfo ( "{0} command is executing using PID {1}" -f $type, $proc.Id )
 
 	$maxPostInstallScriptExecutionSeconds = 60
 	while( -not $proc.WaitForExit( 10 * 1000 ) ) {
 		if( $stopwatch.Elapsed.TotalSeconds -gt $maxPostInstallScriptExecutionSeconds ) {
-			logError ( "Killing post-install process with id {0} since it have not completed within {1} seconds" -f $proc.Id, $maxPostInstallScriptExecutionSeconds )
+			logError ( "Killing {0} process with id {1} since it have not completed within {2} seconds" -f $type, $proc.Id, $maxPostInstallScriptExecutionSeconds )
 			try {
 				$proc.Kill()
 			} catch {
-				logError ( "Failed to kill post-install process with id {0}: {1}" -f $proc.Id, $_ )
+				logError ( "Failed to kill {0} process with id {1}: {2}" -f $type, $proc.Id, $_ )
 			}
 			break
 		}
@@ -376,9 +398,9 @@ function runPostInstallScript {
 	$proc.Refresh()
 
 	if( $proc.ExitCode -eq 0 ) {
-		logSuccess ( "post-install command executed successfully in {0:f2} seconds" -f $stopwatch.Elapsed.TotalSeconds )
+		logSuccess ( "{0} command executed successfully in {1:f2} seconds" -f $type, $stopwatch.Elapsed.TotalSeconds )
 	} else {
-		logInfo ( "post-install process with id {0} exited with code '{1}' after {2:f2} seconds" -f $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds )
+		logInfo ( "{0} process with id {1} exited with code '{2}' after {3:f2} seconds" -f $type, $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds )
 	}
 
 	if( $tempPsFile -and (test-path $tempPsFile ) ) {
@@ -530,6 +552,7 @@ function kolliInstall {
 		$kolliSource,
 		[string[]] $sources,
 		[string] $targetDir,
+		[string] $tempTargetDir,
 		[switch] $verifyOnly
 	)
 
@@ -552,6 +575,10 @@ function kolliInstall {
 	if( -not $kolliSource.Json ) {
 		return logError ( "Kolli '{0}' could not be found." -f $kolliName )
 	} else {
+		if( -not $tempTargetDir ) {
+			$tempTargetDir = makeTempTargetDir $targetDir
+		}
+
 		$kolli = $kolliSource.Json
 		$missingDependencies = $false
 		if( $kolli.dependencies ) {
@@ -560,7 +587,7 @@ function kolliInstall {
 				logSuccess ("Detected dependency {0}" -f $dependencyName)
 				$dependency = getKolliFromSources $dependencyName $sources
 				if( $dependency.Json ) {
-					kolliInstall -kolliSource $dependency -sources $sources -targetDir $targetDir -verifyOnly:$verifyOnly
+					kolliInstall -kolliSource $dependency -sources $sources -targetDir $tempTargetDir -tempTargetDir $tempTargetDir -verifyOnly:$verifyOnly
 				} else {
 					$missingDependencies = $true
 					logError "Dependency '$dependencyName' could not be found."
@@ -575,7 +602,16 @@ function kolliInstall {
 	if( $verifyOnly ) {
 		logSuccess ( "Kolli '{0}' verified successfully." -f $kolliName )
 	} else {
-		expandZip $kolliSource.ZipPath -target $targetDir
+		logInfo ("Exctracting into {0}" -f $tempTargetDir)
+		expandZip $kolliSource.ZipPath -target $tempTargetDir
+		runPreInstall $kolliSource.Json $tempTargetDir
+		if( $tempTargetDir -ne $targetDir ) {
+			logInfo ("Moving kolli from cargo bay into position: {0} => {1}" -f $tempTargetDir, $targetDir )
+			if( test-path -pathtype container $targetDir ) {
+				rm -recurse -force $targetDir
+			}
+			mv $tempTargetDir $targetDir
+		}
 		logSuccess ("Installed '{0}' into '{1}'" -f $kolliName, $targetDir)
 		runPostInstall $kolliSource.Json $targetDir
 	}
