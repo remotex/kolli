@@ -1,5 +1,5 @@
-param( $fileName = "postinstall.log", $value = "I was created by the postinstall script")
-Write-Host "This is postinstall command, my args $($args.Length) are"
+param( $fileName = "script.log", $value = "I was created by the script")
+Write-Host "This script is run by kolli, my unbound args ($($args.Length) in length) are:"
 $args | out-host
 
 $testFilePath = join-path $PSScriptRoot "..\$fileName"
