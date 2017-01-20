@@ -125,8 +125,11 @@ try {
 
     if( test-path $installDir ) {
       err "Installation directory exists. Installation was completed even though preinstall script returned non-zero exit code"
-    } else {
+    }
+    $lastError = $error | select -first 1
+    if( $lastError.Exception.Message -like "*preinstall process*exited with code '1'*exit-one.ps1*" ) {
       tell "Successfully trapped preinstall script error"
+      $error.Remove( $lastError )
     }
 
     $tempInstallPath = join-path $PSScriptRoot "install\htns-2.0.1__kollitmp\bin"
