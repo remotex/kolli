@@ -190,20 +190,21 @@ function writeJson {
     $dependenciesString = [string]::Join( ",`r`n    ", $dependencies )
   }
 
-  $scripts = ""
-  if( $kolliObject.scripts -and $kolliObject.scripts.postinstall ) {
-    $scripts = @"
-
-  "scripts": {
-    "postinstall": $($kolliObject.scripts.postinstall | ConvertTo-Json)
-  },
-"@
+  $scripts = @{}
+  if( $kolliObject.scripts ) {
+    if( $kolliObject.scripts.preinstall ) {
+      $scripts.add( "preinstall", $kolliObject.scripts.preinstall )
+    }
+    if( $kolliObject.scripts.postinstall ) {
+      $scripts.add( "postinstall", $kolliObject.scripts.postinstall )
+    }
   }
 
   $json = @"
 {
   "name": "$($kolliObject.name)",
-  "version": "$($kolliObject.version)",$scripts
+  "version": "$($kolliObject.version)",
+  "scripts": $($scripts | ConvertTo-Json),
   "files": [
     $( [string]::Join( ",`r`n    ", $files ) )
   ],
@@ -458,6 +459,18 @@ function kolliSet {
   } elseif( $property -eq "name" ) {
     $kolli.name = $value
     logInfo ("Setting name to: {0}" -f $value)
+    writeJson $path $kolli
+  } elseif( $property -eq "preinstall" ) {
+    if( -not $kolli.scripts ) {
+      $kolli | add-member -membertype NoteProperty -name scripts -value (new-object psobject)
+    }
+    if( -not $kolli.scripts.preinstall ) {
+      $kolli.scripts | add-member -membertype NoteProperty -name preinstall -value ""
+    }
+    $kolli.scripts.preinstall = $value
+    $value | %{
+      logInfo ("Add preinstall command: {0}" -f $_)
+    }
     writeJson $path $kolli
   } elseif( $property -eq "postinstall" ) {
     if( -not $kolli.scripts ) {
@@ -781,6 +794,8 @@ Commands:
             name - changes the name
             version - changes the version
             files [pattern] - replaces the files array with the files matching the pattern
+            preinstall [list] - replaces the list of commands that are executed prior to installation
+            postinstall [list] - replaces the list of commands that are executed post installation
     verify  Verifies a package
 
 "@ | out-host
