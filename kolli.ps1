@@ -310,7 +310,12 @@ function runPreInstall {
     $preinstall += $kolli.scripts.preinstall
   }
 
-  $preinstall | %{ runScript -command $_ -workingDirectory $workingDirectory -type "preinstall" }
+  foreach( $command in $preinstall ) {
+    if( -not ( runScript -command $command -workingDirectory $workingDirectory -type "preinstall" ) ) {
+      return $false
+    }
+  }
+  return $true
 }
 
 function runPostInstall {
@@ -321,7 +326,9 @@ function runPostInstall {
     $postinstall += $kolli.scripts.postinstall
   }
 
-  $postinstall | %{ runScript -command $_ -workingDirectory $workingDirectory -type "postinstall" }
+  $postinstall | %{
+    runScript -command $_ -workingDirectory $workingDirectory -type "postinstall" | out-null
+  }
 }
 
 function runScript {
@@ -346,7 +353,12 @@ function runScript {
 
   if( ( $filePath | gi | % Extension ) -eq ".ps1" ) {
     $tempPsFile = join-path $env:temp ( [System.IO.Path]::GetRandomFileName() + ".ps1" )
-    $command = "cd ""$workingDirectory""`r`nset-alias psScript ""$filePath""`r`npsScript $arguments"
+    $espacedArgs = $arguments.Replace("""", "'")
+    $command = @"
+cd "$workingDirectory"
+powershell -NonInteractive -NoProfile -Command "$filePath $espacedArgs"
+exit `$LASTEXITCODE
+"@
     sc $tempPsFile $command
     $arguments = "-NonInteractive -NoProfile -File $tempPsFile"
     $filePath = get-command powershell | % path
@@ -401,12 +413,14 @@ function runScript {
   if( $proc.ExitCode -eq 0 ) {
     logSuccess ( "{0} command executed successfully in {1:f2} seconds" -f $type, $stopwatch.Elapsed.TotalSeconds )
   } else {
-    logInfo ( "{0} process with id {1} exited with code '{2}' after {3:f2} seconds" -f $type, $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds )
+    logError ( "{0} process with id {1} exited with code '{2}' after {3:f2} seconds: {4}" -f $type, $proc.Id, $proc.ExitCode, $stopwatch.Elapsed.TotalSeconds, $command )
   }
 
   if( $tempPsFile -and (test-path $tempPsFile ) ) {
     rm $tempPsFile -force
   }
+
+  $proc.ExitCode -eq 0
 }
 
 function kolliBuild {
@@ -617,16 +631,20 @@ function kolliInstall {
   } else {
     logInfo ("Exctracting into {0}" -f $tempTargetDir)
     expandZip $kolliSource.ZipPath -target $tempTargetDir
-    runPreInstall $kolliSource.Json $tempTargetDir
-    if( $tempTargetDir -ne $targetDir ) {
-      logInfo ("Moving kolli from cargo bay into position: {0} => {1}" -f $tempTargetDir, $targetDir )
-      if( test-path -pathtype container $targetDir ) {
-        rm -recurse -force $targetDir
+    if( -not ( runPreInstall $kolliSource.Json $tempTargetDir ) ) {
+      logInfo "Cleaning up temp directory after preinstall script error"
+      rm -recurse $tempTargetDir
+    } else {
+      if( $tempTargetDir -ne $targetDir ) {
+        logInfo ("Moving kolli from cargo bay into position: {0} => {1}" -f $tempTargetDir, $targetDir )
+        if( test-path -pathtype container $targetDir ) {
+          rm -recurse -force $targetDir
+        }
+        mv $tempTargetDir $targetDir
       }
-      mv $tempTargetDir $targetDir
+      logSuccess ("Installed '{0}' into '{1}'" -f $kolliName, $targetDir)
+      runPostInstall $kolliSource.Json $targetDir
     }
-    logSuccess ("Installed '{0}' into '{1}'" -f $kolliName, $targetDir)
-    runPostInstall $kolliSource.Json $targetDir
   }
 }
 
