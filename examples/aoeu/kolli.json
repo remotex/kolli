@@ -1,8 +1,14 @@
 ﻿{
   "name": "aoeu",
   "version": "1.0.0",
+  "scripts": {
+    "preinstall":  ".\\bin\\create-aoeu-txt.ps1"
+},
   "files": [
-    "foo.bar",
-    "kolli.json"
-  ]
+    "bin/create-aoeu-txt.ps1",
+    "foo.bar"
+  ],
+  "dependencies": {
+    
+  }
 }

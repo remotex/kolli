@@ -42,6 +42,8 @@ try {
 
     describeBlock { `
         push-location aoeu
+        kolli set files bin, foo.bar
+        kolli set preinstall ".\bin\create-aoeu-txt.ps1"
         kolli b ..\build
         pop-location
     }
@@ -87,7 +89,7 @@ try {
 
     $installDir = join-path $PWD "install\htns-2.0.0"
     $files = ls -recurse $installDir | % FullName
-    $expectedFiles = "conf\application.config", "foo.bar", "test.txt", "preinstall.txt", "script.log", "postinstall.txt" | %{ join-path $installDir $_ }
+    $expectedFiles = "conf\application.config", "foo.bar", "test.txt", "bin\aoeu.txt", "preinstall.txt", "script.log", "postinstall.txt" | %{ join-path $installDir $_ }
 
     tell "Checking output for files listed by kolli"
 
@@ -101,6 +103,7 @@ try {
 
     $tempInstallPath = join-path $PSScriptRoot "install\htns-2.0.0__kollitmp\bin"
     expectFile (join-path $installDir "preinstall.txt" ) $tempInstallPath "Expected preinstall.txt to contain path of temporary install directory"
+    expectFile (join-path $installDir "bin/aoeu.txt" ) $tempInstallPath "Expected aoeu.txt to contain path of temporary install directory"
 
     $finalInstallPath = join-path $PSScriptRoot "install\htns-2.0.0\bin"
     expectFile (join-path $installDir "postinstall.txt" ) $finalInstallPath "Expected postinstall.txt to contain path of final install directory"
@@ -148,7 +151,7 @@ try {
     if ( $testerrors.Count -gt 0 ) {
       Write-Host -foregroundcolor red "$($testerrors.Count) test errors"
       Write-Host ""
-      $testerrors | %{ Write-Host -foregroundcolor red " - $_" }
+      $testerrors | %{ Write-Host -foregroundcolor red (" - {0}" -f $_.Replace("`r`n","`r`n   ")) }
     } else {
       Write-Host -foregroundcolor green "All tests succeeded!"
     }
