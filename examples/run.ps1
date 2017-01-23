@@ -1,5 +1,7 @@
 push-location $PSScriptRoot
 
+$testerrors = New-Object System.Collections.Generic.List[System.Object]
+
 try {
     set-alias kolli (resolve-path ..\kolli.ps1)
 
@@ -10,6 +12,8 @@ try {
     function err {
       param( $message )
       Write-Host -foregroundcolor red $message
+
+      $testerrors.Add( $message )
     }
 
     tell "Cleaning old build and install dir"
@@ -106,7 +110,7 @@ try {
 
     describeBlock { `
         push-location htns
-        kolli set preinstall ".\bin\exit-one.ps1"
+        kolli set preinstall ".\bin\exit-fourtytwo.ps1"
         kolli set version "2.0.1"
         kolli b ..\build
         pop-location
@@ -127,9 +131,11 @@ try {
       err "Installation directory exists. Installation was completed even though preinstall script returned non-zero exit code"
     }
     $lastError = $error | select -first 1
-    if( $lastError.Exception.Message -like "*preinstall process*exited with code '1'*exit-one.ps1*" ) {
+    if( $lastError.Exception.Message -like "*preinstall process*exited with code '42'*exit-fourtytwo.ps1*" ) {
       tell "Successfully trapped preinstall script error"
       $error.Remove( $lastError )
+    } else {
+      err "Could not find expected error from preinstall script in output when running kolli"
     }
 
     $tempInstallPath = join-path $PSScriptRoot "install\htns-2.0.1__kollitmp\bin"
@@ -139,6 +145,13 @@ try {
       tell "Temporary installation directory was successfully removed by kolli upon preinstall script error"
     }
 
+    if ( $testerrors.Count -gt 0 ) {
+      Write-Host -foregroundcolor red "$($testerrors.Count) test errors"
+      Write-Host ""
+      $testerrors | %{ Write-Host -foregroundcolor red " - $_" }
+    } else {
+      Write-Host -foregroundcolor green "All tests succeeded!"
+    }
 } finally {
     pop-location
     git checkout htns\kolli.json
