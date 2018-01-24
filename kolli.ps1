@@ -356,7 +356,7 @@ function runScript {
     $espacedArgs = $arguments.Replace("""", "'")
     $command = @"
 cd "$workingDirectory"
-powershell -NonInteractive -NoProfile -Command "$filePath $espacedArgs"
+powershell -NonInteractive -NoProfile -Command "& '$filePath' $espacedArgs"
 exit `$LASTEXITCODE
 "@
     sc $tempPsFile $command
