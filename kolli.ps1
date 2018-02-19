@@ -259,7 +259,10 @@ function makeTempTargetDir {
 
   $tempDir = "${targetDir}__kollitmp"
   if( test-path -pathtype container $tempDir ) {
-    rm -force -recurse $tempDir
+    # The -Recurse switch known issues in Remove-Item
+    # https://docs.microsoft.com/en-gb/powershell/module/Microsoft.PowerShell.Management/Remove-Item?view=powershell-5.1
+    Get-ChildItem $tempDir -Recurse | Remove-Item -Force
+    Remove-Item $tempDir -Force
   }
   mkdir $tempDir | out-null
   $tempDir
