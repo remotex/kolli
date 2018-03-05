@@ -95,6 +95,25 @@ function readInput {
   $response
 }
 
+function forceRemoveFiles {
+  param( $path, $start )
+  rm -Force -Recurse $path -ErrorAction SilentlyContinue
+  if( test-path $path ) {
+    sleep -Milliseconds 25
+
+    if( $start -eq $null ) {
+      Write-Host "Waiting for file locks to be released for $path to complete deletion"
+      $start = get-date
+    }
+    $now = get-date
+    if( ($now - $start) -gt [TimeSpan]::FromMinutes(5) ) {
+      throw "Giving up waiting on file locks to be released for $path"
+    } else {
+      forceRemoveFiles $path $start
+    }
+  }
+}
+
 function logHeader {
   param( $color, $text )
   $time = $stopwatch.Elapsed
@@ -273,7 +292,7 @@ function cleanupTempFiles {
     $path = $_
     if( test-path $path ) {
       try {
-        rm -force $path
+        forceRemoveFiles $path
         logInfo "Removed $path"
       } catch {
         logError "Failed to clean up cached file: $path"
@@ -420,7 +439,7 @@ exit `$LASTEXITCODE
   }
 
   if( $tempPsFile -and (test-path $tempPsFile ) ) {
-    rm $tempPsFile -force
+    forceRemoveFiles $tempPsFile
   }
 
   $proc.ExitCode -eq 0
@@ -625,7 +644,7 @@ function kolliInstall {
       }
     }
     if( $missingDependencies ) {
-      return logError ( "All dependencies for '{0}' could not be found from the sources specified." -f $kolliName )
+      return logError ( "Some dependencies for '{0}' could not be found from the sources specified." -f $kolliName )
     }
   }
 
@@ -636,12 +655,12 @@ function kolliInstall {
     expandZip $kolliSource.ZipPath -target $tempTargetDir
     if( -not ( runPreInstall $kolliSource.Json $tempTargetDir ) ) {
       logInfo "Cleaning up temp directory after preinstall script error"
-      rm -recurse $tempTargetDir
+      forceRemoveFiles $tempTargetDir
     } else {
       if( $tempTargetDir -ne $targetDir ) {
         logInfo ("Moving kolli from cargo bay into position: {0} => {1}" -f $tempTargetDir, $targetDir )
         if( test-path -pathtype container $targetDir ) {
-          rm -recurse -force $targetDir
+          forceRemoveFiles $targetDir
         }
         mv $tempTargetDir $targetDir
       }
