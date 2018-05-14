@@ -470,7 +470,7 @@ function kolliBuild {
 
   $tempZipPath = [System.IO.Path]::GetTempFileName()
   $zipFile = $kolli.GetAbsoluteFilePaths() | Get-Item | newZip -target $tempZipPath
-  mv $tempZipPath $outputZip -force
+  move-item $tempZipPath $outputZip -force
   logSuccess ( "Created {0} with {1} files" -f $outputZip, $zipFile.ArchiveFileCount )
 
 }
@@ -662,7 +662,7 @@ function kolliInstall {
         if( test-path -pathtype container $targetDir ) {
           forceRemoveFiles $targetDir
         }
-        mv $tempTargetDir $targetDir
+        move-item $tempTargetDir $targetDir
       }
       logSuccess ("Installed '{0}' into '{1}'" -f $kolliName, $targetDir)
       runPostInstall $kolliSource.Json $targetDir
