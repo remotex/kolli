@@ -379,7 +379,7 @@ function runScript {
     $command = @"
 cd "$workingDirectory"
 powershell -NonInteractive -NoProfile -Command "& '$filePath' $espacedArgs"
-exit `$LASTEXITCODE
+exit $LASTEXITCODE
 "@
     sc $tempPsFile $command
     $arguments = "-NonInteractive -NoProfile -File $tempPsFile"
